@@ -7,11 +7,9 @@ Open the menu with **Right Shift**. Commands use the `.` prefix (`.help`).
 ## Highlights
 
 - **ElytraFly**: Bounce, Boost and Pitch40 modes. Pitch40 climbs and dives between two heights, and it uses rockets only when a climb stalls or when you start a glide too slowly.
-- **ElytraRecast**: briefly swaps a chestplate in just before the elytra would take damage, then reopens the glide. The elytra doesn't lose durability, and your speed is unchanged.
 - **ElytraMace**: dives at a target on an elytra, swaps the chestplate in at the right moment and lands mace smashes.
 - **AutoCrystal**: places and breaks end crystals, using damage calculations and rotations that pass Grim.
 - **StashFinder + StashFinderBot**: highlights chunks that may hold a stash or base, and flies an elytra-and-rocket bot that searches the map for them.
-- **AutoTotem**: refills your offhand totem instantly after a pop, even while you're running.
 - **Recorder**: logs packets, setbacks and module decisions to `bali/logs`, so you can find out why something got flagged.
 
 ## Modules
