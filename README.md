@@ -2,8 +2,6 @@
 
 A Fabric utility mod for Minecraft **1.21.11**, built for 2b2t and other anarchy servers running the **Grim** anticheat.
 
-Most clients spoof packets and hope the server doesn't notice. Bali works out what Grim checks and stays inside those rules instead. Rotations are sent silently, and movement keys are corrected to match them. Inventory clicks wait until no movement keys are held, and rocket boosts stay inside Grim's movement limits.
-
 Open the menu with **Right Shift**. Commands use the `.` prefix (`.help`).
 
 ## Highlights
