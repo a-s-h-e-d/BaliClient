@@ -1,0 +1,12 @@
+# build output / IDE
+.gradle/
+build/
+out/
+run/
+.idea/
+*.iml
+
+# private: in-world test harness and local logs/configs
+src/gametest/
+/bali/
+*.log

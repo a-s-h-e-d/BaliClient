@@ -1,0 +1,66 @@
+plugins {
+    id 'fabric-loom' version "${loom_version}"
+    id 'java'
+}
+
+version = project.mod_version
+group = project.maven_group
+base { archivesName = project.archives_base_name }
+
+repositories { mavenCentral() }
+
+dependencies {
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
+    modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+}
+
+loom {
+    accessWidenerPath = file("src/main/resources/bali.accesswidener")
+    runs {
+        client {
+            if (project.hasProperty('audit')) vmArg '-Dbali.audit=true'
+        }
+    }
+}
+
+// In-world automated tests: ./gradlew runClientGameTest  (src/gametest)
+fabricApi {
+    configureTests {
+        createSourceSet = true
+        modId = "bali-test"
+        enableGameTests = false
+        enableClientGameTests = true
+        eula = true
+    }
+}
+// Blink deliberately holds packets, which the gametest network synchronizer treats as an error.
+loom.runs.matching { it.name.toLowerCase().contains('gametest') }.configureEach {
+    vmArg '-Dfabric.client.gametest.disableNetworkSynchronizer=true'
+    // run only some tests: ./gradlew runClientGameTest -Ptests=newchunks,blink
+    if (project.hasProperty('tests')) vmArg "-Dbali.tests=${project.property('tests')}"
+    if (project.hasProperty('boostruns')) vmArg "-Dbali.boostruns=${project.property('boostruns')}"
+    if (project.hasProperty('botruns')) vmArg "-Dbali.botruns=${project.property('botruns')}"
+    if (project.hasProperty('rocketflight')) vmArg "-Dbali.rocketflight=${project.property('rocketflight')}"
+    if (project.hasProperty('rocketmodes')) vmArg "-Dbali.rocketmodes=${project.property('rocketmodes')}"
+    if (project.hasProperty('macheight')) vmArg "-Dbali.macheight=${project.property('macheight')}"
+    if (project.hasProperty('macticks')) vmArg "-Dbali.macticks=${project.property('macticks')}"
+    if (project.hasProperty('macscen')) vmArg "-Dbali.macscen=${project.property('macscen')}"
+    if (project.hasProperty('macitem')) vmArg "-Dbali.macitem=${project.property('macitem')}"
+}
+
+processResources {
+    inputs.property "version", project.version
+    filesMatching("fabric.mod.json") { expand "version": project.version }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    it.options.release = 21
+    it.options.encoding = 'UTF-8'
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
+}

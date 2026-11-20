@@ -1,0 +1,43 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "dev.bali.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "client": [
+    "ClientConnectionMixin",
+    "ClientPlayerEntityAccessor",
+    "ClientPlayerEntityMixin",
+    "ClientPlayerInteractionManagerMixin",
+    "ClientPlayNetworkHandlerMixin",
+    "ConnectScreenMixin",
+    "DisconnectedScreenMixin",
+    "EntityMixin",
+    "FireworkRocketEntityMixin",
+    "FreecamInputMixins",
+    "FreecamLookMixin",
+    "FreecamMixins",
+    "GameRendererMixin",
+    "InGameOverlayRendererMixin",
+    "KeyboardMixin",
+    "LivingEntityMixin",
+    "MouseMixin",
+    "MoveFixInputMixin",
+    "NametagsMixin",
+    "ParticleManagerMixin",
+    "PlayerMoveC2SPacketAccessor",
+    "RenderTweaksMixins",
+    "ShulkerTextMixin",
+    "ShulkerViewerMixins",
+    "SilentEatHandMixin",
+    "SilentEatHudMixin",
+    "WeatherAndExplosionMixins",
+    "WeatherRenderingMixin",
+    "XrayAoMixin",
+    "XrayLightMixin",
+    "XrayMixins",
+    "XrayModelMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

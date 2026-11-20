@@ -1,0 +1,13 @@
+accessWidener v2 named
+accessible field net/minecraft/client/MinecraftClient itemUseCooldown I
+mutable field net/minecraft/client/MinecraftClient itemUseCooldown I
+accessible method net/minecraft/client/network/ClientPlayerInteractionManager syncSelectedSlot ()V
+accessible method net/minecraft/entity/Entity movementInputToVelocity (Lnet/minecraft/util/math/Vec3d;FF)Lnet/minecraft/util/math/Vec3d;
+accessible field net/minecraft/client/network/ClientPlayerInteractionManager currentBreakingProgress F
+accessible field net/minecraft/client/network/ClientPlayerInteractionManager blockBreakingCooldown I
+mutable field net/minecraft/client/network/ClientPlayerInteractionManager blockBreakingCooldown I
+accessible field net/minecraft/entity/LivingEntity jumpingCooldown I
+mutable field net/minecraft/entity/LivingEntity jumpingCooldown I
+accessible field net/minecraft/network/packet/c2s/play/PlayerInteractEntityC2SPacket entityId I
+accessible field net/minecraft/client/input/Input movementVector Lnet/minecraft/util/math/Vec2f;
+accessible field net/minecraft/entity/projectile/FireworkRocketEntity shooter Lnet/minecraft/entity/LivingEntity;

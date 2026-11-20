@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "bali",
+  "version": "${version}",
+  "name": "Bali",
+  "description": "Bali utility client",
+  "authors": ["Bali"],
+  "license": "All-Rights-Reserved",
+  "environment": "client",
+  "entrypoints": {
+    "client": ["dev.bali.Bali"]
+  },
+  "mixins": ["bali.mixins.json"],
+  "accessWidener": "bali.accesswidener",
+  "depends": {
+    "fabricloader": ">=0.20.0",
+    "minecraft": "~1.21.11",
+    "java": ">=21",
+    "fabric-api": "*"
+  }
+}
