@@ -5,7 +5,7 @@
   "name": "Bali",
   "description": "Bali utility client",
   "authors": ["Bali"],
-  "license": "All-Rights-Reserved",
+  "license": "MIT",
   "environment": "client",
   "entrypoints": {
     "client": ["dev.bali.Bali"]
