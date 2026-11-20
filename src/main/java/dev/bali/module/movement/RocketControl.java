@@ -1,5 +1,6 @@
 package dev.bali.module.movement;
 
+import dev.bali.manager.RotationPriority;
 import dev.bali.event.EventHandler;
 import dev.bali.event.events.Events;
 import dev.bali.module.Category;
@@ -76,7 +77,7 @@ public final class RocketControl extends Module {
             if (fireRun == null) return;
             // look the way we want to go so the rocket's first tick already pushes there
             float[] r = keys ? GrimBoost.lookAlong(dir) : new float[]{mc.player.getYaw(), mc.player.getPitch()};
-            GrimBoost.face(r[0], r[1], 40, fireRun);
+            GrimBoost.face(r[0], r[1], RotationPriority.ROCKET_CONTROL, fireRun);
             return;
         }
 
@@ -84,7 +85,7 @@ public final class RocketControl extends Module {
             Vec3d want = dir.normalize().multiply(speed.getD() / 20);
             GrimBoost.requestVelocity(want);
             float[] r = GrimBoost.lookAlong(want);
-            GrimBoost.face(r[0], r[1], 40, null);
+            GrimBoost.face(r[0], r[1], RotationPriority.ROCKET_CONTROL, null);
         } else {
             // brake: zero is inside Grim's box once the last tick's speed has been bled off
             GrimBoost.requestVelocity(Vec3d.ZERO);

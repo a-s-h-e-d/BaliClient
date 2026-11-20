@@ -46,20 +46,29 @@ public final class AutoArmor extends Module {
             if (DamageUtil.enchantLevel(current, Enchantments.BINDING_CURSE) > 0) continue;
             // never pull the elytra off mid-flight
             if (slot == EquipmentSlot.CHEST && mc.player.isGliding() && current.contains(DataComponentTypes.GLIDER)) continue;
-            double currentScore = score(current, slot);
+            // Only a real upgrade (armor, toughness, enchants) or a worn-out piece is worth a swap.
+            // Durability alone must not decide it: explosions wear the worn piece, which made an
+            // identical spare look better every hit and swapped back and forth until kicked.
+            // best spare: highest score, the freshest one among equal scores
             int bestIdx = -1;
-            double bestScore = currentScore;
+            double bestScore = 0, bestLeft = 0;
             for (int i = 0; i < 36; i++) {
                 ItemStack s = mc.player.getInventory().getStack(i);
                 if (s.isEmpty() || slotOf(s) != slot) continue;
                 if (ignoreBinding.on() && DamageUtil.enchantLevel(s, Enchantments.BINDING_CURSE) > 0) continue;
-                double sc = score(s, slot);
-                if (sc > bestScore) {
-                    bestScore = sc;
+                double sc = score(s, slot), left = remaining(s);
+                if (bestIdx == -1 || sc > bestScore + EPS || sc > bestScore - EPS && left > bestLeft) {
                     bestIdx = i;
+                    bestScore = sc;
+                    bestLeft = left;
                 }
             }
             if (bestIdx == -1) continue;
+            double currentScore = score(current, slot);
+            boolean upgrade = bestScore > currentScore + EPS;
+            boolean replaceWorn = !current.isEmpty() && remaining(current) < WORN
+                    && bestScore > currentScore - EPS && bestLeft >= FRESH;
+            if (!upgrade && !replaceWorn) continue;
 
             if (!dev.bali.util.ClickGate.tryClick()) return; // keys released; equip next tick
             int from = InvUtil.toScreenSlot(bestIdx);
@@ -93,7 +102,13 @@ public final class AutoArmor extends Module {
         int mending = DamageUtil.enchantLevel(s, Enchantments.MENDING);
         double score = armor * 10 + tough * 6 + prot * 4 + blast * 2 + unb * 0.5 + mending * 0.5;
         if (blastLegs.on() && slot == EquipmentSlot.LEGS) score += blast * 6;
-        if (s.isDamageable()) score -= (double) s.getDamage() / s.getMaxDamage() * 2; // slight preference for fresh pieces
         return score;
+    }
+
+    /** Swap out a piece once it is below this much durability left, for one above {@link #FRESH}. */
+    private static final double WORN = 0.1, FRESH = 0.3, EPS = 0.01;
+
+    private static double remaining(ItemStack s) {
+        return s.isDamageable() ? 1 - (double) s.getDamage() / s.getMaxDamage() : 1;
     }
 }

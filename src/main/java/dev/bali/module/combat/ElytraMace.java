@@ -1,5 +1,6 @@
 package dev.bali.module.combat;
 
+import dev.bali.manager.RotationPriority;
 import dev.bali.Bali;
 import dev.bali.event.EventHandler;
 import dev.bali.event.events.Events;
@@ -225,12 +226,12 @@ public final class ElytraMace extends Module {
             GrimBoost.requestVelocity(want);
             float[] r = want.lengthSquared() > 0.04 ? GrimBoost.lookAlong(want)
                 : RotationUtil.rotationsTo(mc.player.getEyePos(), target.getBoundingBox().getCenter());
-            GrimBoost.face(r[0], r[1], 60, fire);
+            GrimBoost.face(r[0], r[1], RotationPriority.ELYTRA_MACE, fire);
         } else {
             // between rockets: glide toward the goal holding height
             float yaw = RotationUtil.rotationsTo(pos, goal)[0];
             double wantVy = MathHelper.clamp(delta.y / 20, -0.5, 0);
-            GrimBoost.face(yaw, GrimBoost.glidePitch(mc.player.getVelocity(), yaw, wantVy), 60, fire);
+            GrimBoost.face(yaw, GrimBoost.glidePitch(mc.player.getVelocity(), yaw, wantVy), RotationPriority.ELYTRA_MACE, fire);
         }
     }
 
@@ -262,7 +263,7 @@ public final class ElytraMace extends Module {
         Runnable fire = needRocket(rocket) ? this::fireRocket : null;
         if (rocket) GrimBoost.requestVelocity(flyVel);
         float[] r = GrimBoost.lookAlong(dir);
-        GrimBoost.face(r[0], r[1], 60, fire);
+        GrimBoost.face(r[0], r[1], RotationPriority.ELYTRA_MACE, fire);
 
         // time to reach, from our closing speed on the target
         Vec3d rel = vel.subtract(targetVelocity(target));
@@ -313,7 +314,7 @@ public final class ElytraMace extends Module {
             holdMace();
             LivingEntity t = target;
             double fall = mc.player.fallDistance;
-            Bali.ROTATIONS.rotate(aim, 60, () -> {
+            Bali.ROTATIONS.rotate(aim, RotationPriority.ELYTRA_MACE, () -> {
                 if (!t.isAlive() || mc.player.getEyePos().distanceTo(RotationUtil.closestPoint(t.getBoundingBox(), mc.player.getEyePos())) > reach.getD()) return;
                 mc.interactionManager.attackEntity(mc.player, t);
                 mc.player.swingHand(Hand.MAIN_HAND);
@@ -326,7 +327,7 @@ public final class ElytraMace extends Module {
         }
         // keep looking at the target: while the client still glides (until the server's flag arrives) this steers us in
         float[] r = RotationUtil.rotationsTo(eye, aim);
-        GrimBoost.face(r[0], r[1], 60, null);
+        GrimBoost.face(r[0], r[1], RotationPriority.ELYTRA_MACE, null);
 
         if (phaseTicks > 25 || mc.player.isOnGround() || mc.player.getY() < target.getY() - 2) {
             setPhase(Phase.Recover, String.format(Locale.ROOT, "missed: dist=%.2f after %d ticks", dist, phaseTicks));

@@ -1,5 +1,6 @@
 package dev.bali.module.movement;
 
+import dev.bali.manager.RotationPriority;
 import dev.bali.Bali;
 import dev.bali.event.EventHandler;
 import dev.bali.event.events.Events;
@@ -53,7 +54,7 @@ public final class NoFall extends Module {
         var hit = mc.world.raycast(new RaycastContext(pos, pos.add(0, -lookAhead, 0), RaycastContext.ShapeType.COLLIDER, RaycastContext.FluidHandling.ANY, mc.player));
         if (hit.getType() != HitResult.Type.BLOCK) return;
         if (pos.y - hit.getPos().y > 4.5) return;
-        Bali.ROTATIONS.rotate(mc.player.getYaw(), 90f, 100, () -> InvUtil.silentSwap(slot, () -> {
+        Bali.ROTATIONS.rotate(mc.player.getYaw(), 90f, RotationPriority.NO_FALL, () -> InvUtil.silentSwap(slot, () -> {
             mc.interactionManager.interactItem(mc.player, Hand.MAIN_HAND);
             mc.player.swingHand(Hand.MAIN_HAND);
         }));

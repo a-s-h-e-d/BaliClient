@@ -1,5 +1,6 @@
 package dev.bali.module.movement;
 
+import dev.bali.manager.RotationPriority;
 import dev.bali.Bali;
 import dev.bali.event.EventHandler;
 import dev.bali.event.events.Events;
@@ -180,7 +181,7 @@ public final class ElytraFly extends Module {
         switch (pitchLock.get()) {
             // Sent only to the server; the elytra move-fix makes our physics use it too, so the
             // camera can look anywhere while Grim sees (and simulates) the locked rotation.
-            case Silent -> Bali.ROTATIONS.rotate(yaw, bouncePitch(), 5, null);
+            case Silent -> Bali.ROTATIONS.rotate(yaw, bouncePitch(), RotationPriority.ELYTRA_FLY, null);
             case Client -> {
                 mc.player.setPitch(pitch.getF());
                 mc.player.setYaw(yaw);
@@ -375,7 +376,7 @@ public final class ElytraFly extends Module {
         lastFaceYaw = yaw;
         lastFacePitch = pitch;
         if (Bali.MODULES.get(Rotations.class).moveFix.on()) {
-            Bali.ROTATIONS.rotate(yaw, pitch, 5, afterSend);
+            Bali.ROTATIONS.rotate(yaw, pitch, RotationPriority.ELYTRA_FLY, afterSend);
         } else {
             mc.player.setYaw(yaw);
             mc.player.setPitch(pitch);

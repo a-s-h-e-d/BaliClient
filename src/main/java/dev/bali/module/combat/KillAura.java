@@ -1,5 +1,6 @@
 package dev.bali.module.combat;
 
+import dev.bali.manager.RotationPriority;
 import dev.bali.Bali;
 import dev.bali.event.EventHandler;
 import dev.bali.event.events.Events;
@@ -40,6 +41,8 @@ public final class KillAura extends Module {
     private final EnumSetting<Weapon> weapon = mode("Weapon", Weapon.Switch, "Switch = swap to your sword (best weapon) when a target is in range; SwordAxe = only hit while holding one");
     private final BoolSetting rotate = bool("Rotate", true, "Silent rotate to the target (needed on Grim)");
     private final BoolSetting pauseEating = bool("Pause Eating", true, "Don't attack while using an item");
+    private final BoolSetting offhandGap = bool("Offhand Gap", true, "Hold right click with a weapon (or nothing) in hand to put a gapple in your offhand and eat it (AutoTotem does the swap, so keep it on)");
+    private final NumberSetting gapHealth = number("Gap Health", 12, 1, 36, 0.5, "Below this health+absorption the totem stays in your offhand instead");
     private final BoolSetting render = bool("Render", true, "Highlight the target");
     private final ColorSetting color = color("Color", 0x60FF3030, "Target highlight");
 
@@ -56,6 +59,29 @@ public final class KillAura extends Module {
     protected void onDisable() { target = null; }
 
     public LivingEntity target() { return isEnabled() ? target : null; }
+
+    /**
+     * The gapple to put in the offhand right now (enchanted first), or null: Offhand Gap on, right
+     * click held with a weapon (or nothing) in the main hand, health above Gap Health and one in the
+     * inventory. Right click then eats from the offhand. AutoTotem asks this and still puts the totem
+     * back on any danger. Holding blocks, a bow, XP bottles etc. never moves the totem.
+     */
+    public net.minecraft.item.Item offhandGapple() {
+        if (!isEnabled() || !offhandGap.on() || mc.player == null || !mc.options.useKey.isPressed()) return null;
+        if (!weaponOrEmpty(mc.player.getMainHandStack())) return null;
+        if (DamageUtil.health(mc.player) <= gapHealth.getF()) return null;
+        if (InvUtil.findInventory(net.minecraft.item.Items.ENCHANTED_GOLDEN_APPLE) != -1 || mc.player.getOffHandStack().isOf(net.minecraft.item.Items.ENCHANTED_GOLDEN_APPLE))
+            return net.minecraft.item.Items.ENCHANTED_GOLDEN_APPLE;
+        if (InvUtil.findInventory(net.minecraft.item.Items.GOLDEN_APPLE) != -1 || mc.player.getOffHandStack().isOf(net.minecraft.item.Items.GOLDEN_APPLE))
+            return net.minecraft.item.Items.GOLDEN_APPLE;
+        return null;
+    }
+
+    /** Main hand items whose right click does nothing in the air, so it falls through to the offhand. */
+    private static boolean weaponOrEmpty(net.minecraft.item.ItemStack s) {
+        return s.isEmpty() || s.isIn(net.minecraft.registry.tag.ItemTags.SWORDS) || s.isIn(net.minecraft.registry.tag.ItemTags.AXES)
+                || s.isOf(net.minecraft.item.Items.MACE);
+    }
 
     @EventHandler
     private void onTick(Events.TickPre e) {
@@ -81,7 +107,7 @@ public final class KillAura extends Module {
 
         LivingEntity t = target;
         Vec3d aim = RotationUtil.closestPoint(t.getBoundingBox(), mc.player.getEyePos());
-        if (rotate.on()) Bali.ROTATIONS.rotate(aim, 50, () -> attack(t));
+        if (rotate.on()) Bali.ROTATIONS.rotate(aim, RotationPriority.KILL_AURA, () -> attack(t));
         else attack(t);
     }
 

@@ -1,5 +1,6 @@
 package dev.bali.module.combat;
 
+import dev.bali.manager.RotationPriority;
 import dev.bali.event.EventHandler;
 import dev.bali.event.events.Events;
 import dev.bali.module.Category;
@@ -8,14 +9,14 @@ import dev.bali.setting.BoolSetting;
 import dev.bali.setting.ColorSetting;
 import dev.bali.setting.NumberSetting;
 import dev.bali.util.BlockUtil;
+import dev.bali.util.HoleUtil;
 import dev.bali.util.InvUtil;
+import dev.bali.util.Placer;
 import dev.bali.util.Render3D;
 import net.minecraft.block.Blocks;
-import net.minecraft.item.BlockItem;
 import net.minecraft.item.Items;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
-import net.minecraft.util.math.Direction;
 
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -32,11 +33,13 @@ public final class Surround extends Module {
     private final BoolSetting enderChests = bool("Ender Chests", true, "Use ender chests if out of obsidian");
     private final BoolSetting face = bool("Face", true, "Also fill the spots on top of your surround (head height), so crystals cannot sit at your face");
     private final NumberSetting range = number("Range", 4.5, 1, 6, 0.1, "Placement reach");
+    private final BoolSetting breakCrystals = bool("Break Crystals", true, "Break a crystal sitting in a surround spot and fill the spot in the same tick (anti-city). Skipped if the blast would kill you");
     private final ColorSetting color = color("Color", 0x402BB5C9, "Render color");
 
     /** NaN until we have a player: enabled from the config at launch, onEnable runs before any world exists. */
     private double startY = Double.NaN;
     private final Set<BlockPos> rendered = new LinkedHashSet<>();
+    private final Placer placer = new Placer();
 
     public Surround() {
         super("Surround", "Surrounds your feet with obsidian", Category.COMBAT);
@@ -59,7 +62,10 @@ public final class Surround extends Module {
 
     /** New server: measure jumps from where we are now, not from the last world. */
     @EventHandler
-    private void onJoin(Events.Join e) { startY = Double.NaN; }
+    private void onJoin(Events.Join e) {
+        startY = Double.NaN;
+        placer.clear();
+    }
 
     @EventHandler
     private void onTick(Events.TickPre e) {
@@ -74,33 +80,51 @@ public final class Surround extends Module {
         if (slot == -1) return;
 
         int placed = 0;
-        for (BlockPos pos : positions()) {
-            if (!BlockUtil.isReplaceable(pos)) continue;
+        boolean rotated = false; // one rotation per tick, and a crystal break always needs one
+        List<BlockPos> wanted = positions();
+        placer.tick(wanted);
+        for (BlockPos pos : wanted) {
+            if (!BlockUtil.isReplaceable(pos)) {
+                placer.filled(pos);
+                continue;
+            }
             rendered.add(pos);
             if (placed >= bpt.getI()) continue;
             // only one rotation per tick can be sent, so with rotate on we place one block per tick
             if (rotate.on() && placed >= 1) continue;
-            if (BlockUtil.place(pos, slot, rotate.on(), strict.on(), range.getD(), 80)) placed++;
+            if (!placer.ready(pos)) continue;
+            Runnable clicked = placer.clicked(pos);
+            if (!BlockUtil.noEntityCollision(pos)) {
+                // someone mined this spot and is crystalling it (or a crystal next door overlaps it):
+                // break it and fill the spot in one go, at Surround priority, above AutoCrystal
+                if (breakCrystals.on() && !rotated
+                        && BlockUtil.placeBreakingCrystals(pos, slot, strict.on(), range.getD(), RotationPriority.SURROUND, maxSelf(), clicked)) {
+                    placed++;
+                    rotated = true;
+                }
+                continue;
+            }
+            if (BlockUtil.place(pos, slot, rotate.on(), strict.on(), range.getD(), RotationPriority.SURROUND, clicked)) {
+                placed++;
+                rotated |= rotate.on();
+            }
         }
+    }
+
+    /** Most a crystal break may hurt us: we must survive it without popping a totem. */
+    private float maxSelf() {
+        return dev.bali.util.DamageUtil.health(mc.player) - 1f;
     }
 
     /** Positions around the blocks the player's hitbox occupies, plus support blocks if needed. */
     private List<BlockPos> positions() {
         List<BlockPos> out = new ArrayList<>();
-        Box box = mc.player.getBoundingBox();
-        int y = (int) Math.floor(mc.player.getY() + 0.2);
-        Set<BlockPos> feet = new LinkedHashSet<>();
-        for (int x = (int) Math.floor(box.minX); x <= (int) Math.floor(box.maxX - 1e-6); x++)
-            for (int z = (int) Math.floor(box.minZ); z <= (int) Math.floor(box.maxZ - 1e-6); z++)
-                feet.add(new BlockPos(x, y, z));
-        for (BlockPos f : feet) {
-            for (Direction d : Direction.Type.HORIZONTAL) {
-                BlockPos p = f.offset(d);
-                if (feet.contains(p)) continue;
-                // need something to place against: add support block below if the spot is floating
-                if (BlockUtil.placeInfo(p, strict.on(), range.getD()) == null && BlockUtil.isReplaceable(p.down())) out.add(p.down());
-                out.add(p);
-            }
+        Set<BlockPos> feet = HoleUtil.footprint(mc.player);
+        int y = feet.iterator().next().getY();
+        for (BlockPos p : HoleUtil.ring(feet)) {
+            // need something to place against: add support block below if the spot is floating
+            if (BlockUtil.placeInfo(p, strict.on(), range.getD()) == null && BlockUtil.isReplaceable(p.down())) out.add(p.down());
+            out.add(p);
         }
         if (face.on()) {
             // after the feet ring, so each face block has the surround block under it to be placed on

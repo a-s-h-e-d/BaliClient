@@ -70,6 +70,8 @@ public final class ModuleManager {
         register(new Criticals());
         register(new Velocity());
         register(new Surround());
+        register(new dev.bali.module.combat.HoleFiller());
+        register(new dev.bali.module.combat.AutoTrap());
         register(new AutoLog());
         register(new dev.bali.module.combat.ElytraMace());
         register(new dev.bali.module.combat.MaceDtap());
@@ -97,6 +99,7 @@ public final class ModuleManager {
         register(new ShulkerViewer());
         register(new Freecam());
         register(new HoleESP());
+        register(new dev.bali.module.render.FootESP());
         register(new dev.bali.module.render.BreakESP());
         register(new Fullbright());
         register(new NoRender());

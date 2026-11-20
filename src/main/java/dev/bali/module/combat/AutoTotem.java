@@ -37,9 +37,9 @@ public final class AutoTotem extends Module {
     private final EnumSetting<Mode> mode = mode("Mode", Mode.Totem, "Totem always, or Smart offhand");
     private final EnumSetting<Fallback> fallback = mode("Fallback", Fallback.Crystal, "Item to hold when safe (Smart)");
     private final NumberSetting health = number("Health", 16, 1, 36, 0.5, "Totem below this health+absorption (Smart)");
-    private final BoolSetting crystalCheck = bool("Crystal Check", true, "Totem if a nearby crystal could kill you (Smart)");
-    private final BoolSetting elytraCheck = bool("Elytra Check", true, "Totem while flying (Smart)");
-    private final BoolSetting fallCheck = bool("Fall Check", true, "Totem if the fall could kill you (Smart)");
+    private final BoolSetting crystalCheck = bool("Crystal Check", true, "Totem if a nearby crystal could kill you (Smart, and KillAura Offhand Gap)");
+    private final BoolSetting elytraCheck = bool("Elytra Check", true, "Totem while flying (Smart, and KillAura Offhand Gap)");
+    private final BoolSetting fallCheck = bool("Fall Check", true, "Totem if the fall could kill you (Smart, and KillAura Offhand Gap)");
     private final BoolSetting gappleSword = bool("Sword Gap", true, "Hold a gapple when holding a sword and right-clicking (Smart)");
     private final NumberSetting delay = number("Delay", 0, 0, 10, 1, "Ticks between swaps");
     private final BoolSetting closePacket = bool("Close Packet", false, "Send an inventory close after swapping");
@@ -109,17 +109,26 @@ public final class AutoTotem extends Module {
     }
 
     private Item wantedItem() {
+        // KillAura's Offhand Gap (right click held, above its Gap Health) works in both modes, but
+        // never over a real danger: those keep the totem in
+        Item gap = dev.bali.Bali.MODULES.get(KillAura.class).offhandGapple();
+        if (gap != null && !danger()) return gap;
         if (mode.is(Mode.Totem)) return Items.TOTEM_OF_UNDYING;
         if (DamageUtil.health(mc.player) <= health.getF()) return Items.TOTEM_OF_UNDYING;
-        if (elytraCheck.on() && mc.player.isGliding()) return Items.TOTEM_OF_UNDYING;
-        if (fallCheck.on() && mc.player.fallDistance > 3 && mc.player.fallDistance - 3 >= DamageUtil.health(mc.player)) return Items.TOTEM_OF_UNDYING;
-        if (crystalCheck.on() && crystalDanger()) return Items.TOTEM_OF_UNDYING;
+        if (danger()) return Items.TOTEM_OF_UNDYING;
 
         if (gappleSword.on() && mc.options.useKey.isPressed()
             && mc.player.getMainHandStack().isIn(net.minecraft.registry.tag.ItemTags.SWORDS)) {
             return Items.ENCHANTED_GOLDEN_APPLE;
         }
         return fallback.is(Fallback.Crystal) ? Items.END_CRYSTAL : Items.ENCHANTED_GOLDEN_APPLE;
+    }
+
+    /** Flying, a fall or a crystal that could kill us (each behind its setting). */
+    private boolean danger() {
+        if (elytraCheck.on() && mc.player.isGliding()) return true;
+        if (fallCheck.on() && mc.player.fallDistance > 3 && mc.player.fallDistance - 3 >= DamageUtil.health(mc.player)) return true;
+        return crystalCheck.on() && crystalDanger();
     }
 
     private boolean crystalDanger() {

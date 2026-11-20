@@ -1,5 +1,6 @@
 package dev.bali.module.combat;
 
+import dev.bali.manager.RotationPriority;
 import dev.bali.Bali;
 import dev.bali.event.EventHandler;
 import dev.bali.event.events.Events;
@@ -17,6 +18,8 @@ import dev.bali.util.MaceUtil;
 import dev.bali.util.Render3D;
 import dev.bali.util.RotationUtil;
 import net.minecraft.entity.Entity;
+import net.minecraft.entity.damage.DamageTypes;
+import net.minecraft.network.packet.s2c.play.EntityDamageS2CPacket;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.Items;
 import net.minecraft.util.Hand;
@@ -24,6 +27,7 @@ import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Vec3d;
 
 import java.util.HashMap;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.Locale;
 import java.util.Map;
 
@@ -42,7 +46,7 @@ import java.util.Map;
 public final class AntiMace extends Module {
     private final NumberSetting range = number("Range", 32, 8, 64, 1, "Watch players within this distance");
     private final NumberSetting react = number("React", 12, 5, 30, 1, "Respond when a smash could land within this many ticks (a shield needs 5 plus your ping)");
-    private final BoolSetting requireMace = bool("Require Mace", true, "Only players holding a mace (off: anyone diving at you)");
+    private final BoolSetting requireMace = bool("Require Mace", true, "Only mace users: holding one, or seen holding or smashing with one in the last 5 minutes (off: anyone diving at you)");
     private final BoolSetting shield = bool("Shield", true, "Raise a shield facing the attacker");
     private final BoolSetting chestplate = bool("Chestplate", true, "Standing in an elytra: swap a chestplate in");
     private final BoolSetting dodge = bool("Dodge", true, "Gliding: rocket sideways out of the dive");
@@ -55,6 +59,13 @@ public final class AntiMace extends Module {
     }
 
     private final Map<Integer, Track> tracks = new HashMap<>();
+    /**
+     * Entity id -> until when we count them as a mace user. Divers usually hold a totem and swap to
+     * the mace only for the hit, so holding one right now misses them; a smash they land (on us or
+     * anyone we can see) gives them away. Written from the network thread.
+     */
+    private final Map<Integer, Long> maceUsers = new ConcurrentHashMap<>();
+    private static final long MACE_MEMORY_MS = 5 * 60_000;
     private PlayerEntity threat;
     private double threatEta;
     private boolean shielding, alerted;
@@ -123,10 +134,31 @@ public final class AntiMace extends Module {
             }
             tr.prev = pos;
             seen.put(p.getId(), tr);
+            isMaceUser(p); // remembers anyone we catch holding one, even for a tick
         }
         tracks.clear();
         tracks.putAll(seen);
     }
+
+    private boolean isMaceUser(PlayerEntity p) {
+        if (MaceUtil.isMace(p.getMainHandStack()) || MaceUtil.isMace(p.getOffHandStack())) {
+            maceUsers.put(p.getId(), System.currentTimeMillis() + MACE_MEMORY_MS);
+            return true;
+        }
+        Long until = maceUsers.get(p.getId());
+        return until != null && until > System.currentTimeMillis();
+    }
+
+    @EventHandler
+    private void onReceive(Events.PacketReceive e) {
+        if (e.packet instanceof EntityDamageS2CPacket d && d.sourceType().matchesKey(DamageTypes.MACE_SMASH)
+                && d.sourceCauseId() >= 0 && (mc.player == null || d.sourceCauseId() != mc.player.getId())) {
+            maceUsers.put(d.sourceCauseId(), System.currentTimeMillis() + MACE_MEMORY_MS);
+        }
+    }
+
+    @EventHandler
+    private void onJoin(Events.Join e) { maceUsers.clear(); } // entity ids are per server
 
     private PlayerEntity findThreat() {
         PlayerEntity best = null;
@@ -137,7 +169,7 @@ public final class AntiMace extends Module {
         for (PlayerEntity p : mc.world.getPlayers()) {
             if (p == mc.player || !EntityUtil.isAliveTarget(p) || EntityUtil.isFriend(p)) continue;
             if (mc.player.squaredDistanceTo(p) > rangeSq) continue;
-            if (requireMace.on() && !MaceUtil.isMace(p.getMainHandStack())) continue;
+            if (requireMace.on() && !isMaceUser(p)) continue;
             Track tr = tracks.get(p.getId());
             if (tr == null || p.getY() < mc.player.getY() + 0.5 || tr.vel.y > -0.15) continue;
 
@@ -207,7 +239,7 @@ public final class AntiMace extends Module {
         float yaw = RotationUtil.rotationsTo(mc.player.getEyePos(), t.getEyePos())[0];
         Vec3d d = t.getEntityPos().subtract(mc.player.getEntityPos());
         if (d.horizontalLengthSquared() < 0.01) yaw = mc.player.getYaw(); // straight above: any yaw blocks
-        Bali.ROTATIONS.rotate(yaw, mc.player.getPitch(), 90, null);
+        Bali.ROTATIONS.rotate(yaw, mc.player.getPitch(), RotationPriority.ANTI_MACE, null);
     }
 
     private void lowerShield() {
@@ -234,10 +266,10 @@ public final class AntiMace extends Module {
         float[] r = GrimBoost.lookAlong(want);
         if (GrimBoost.rocketAttached()) {
             GrimBoost.requestVelocity(want);
-            GrimBoost.face(r[0], r[1], 90, null);
+            GrimBoost.face(r[0], r[1], RotationPriority.ANTI_MACE, null);
         } else if (rocketTimer <= 0) {
             rocketTimer = 10;
-            GrimBoost.face(r[0], r[1], 90, GrimBoost::fireRocket);
+            GrimBoost.face(r[0], r[1], RotationPriority.ANTI_MACE, GrimBoost::fireRocket);
         }
     }
 

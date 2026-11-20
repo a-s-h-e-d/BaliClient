@@ -1,5 +1,6 @@
 package dev.bali.module.combat;
 
+import dev.bali.manager.RotationPriority;
 import dev.bali.Bali;
 import dev.bali.event.EventHandler;
 import dev.bali.event.events.Events;
@@ -342,7 +343,7 @@ public final class AutoCrystal extends Module {
             act.run();
             // an unrequested tick would send the camera rotation again: keep holding the aim
             if (aim != null) aimAt(aim, null);
-            else Bali.ROTATIONS.rotate(Bali.ROTATIONS.serverYaw(), Bali.ROTATIONS.serverPitch(), 90, null);
+            else Bali.ROTATIONS.rotate(Bali.ROTATIONS.serverYaw(), Bali.ROTATIONS.serverPitch(), RotationPriority.AUTO_CRYSTAL, null);
         } else if (aim != null) {
             aimAt(aim, act);
         }
@@ -385,7 +386,7 @@ public final class AutoCrystal extends Module {
     /** Requests the rotation that looks at {@code point} from the predicted eye position. */
     private void aimAt(Vec3d point, Runnable afterSend) {
         float[] r = RotationUtil.rotationsTo(aimEye(), point);
-        Bali.ROTATIONS.rotate(r[0], r[1], 90, afterSend);
+        Bali.ROTATIONS.rotate(r[0], r[1], RotationPriority.AUTO_CRYSTAL, afterSend);
     }
 
     /** Grim's box for an end crystal: 2x2x2 from its feet. Shrunk a hair so we never sit on the edge. */
@@ -413,6 +414,7 @@ public final class AutoCrystal extends Module {
 
     private void placeCrystal(PlaceResult r, Hand hand, int slot) {
         if (tickPlace != null && !tickPlace.sameClick(r)) return; // one click target per tick
+        if (dev.bali.util.GrimTick.otherClicked()) return; // Surround & co. clicked in this Grim tick
         if (killLocked()) return; // Loot Safe: nothing goes down behind a lethal crystal
         BlockHitResult hit = new BlockHitResult(r.hitVec, r.side, r.base, false);
         Runnable click = () -> {
@@ -444,6 +446,7 @@ public final class AutoCrystal extends Module {
         if (attacked.containsKey(id) || mc.getNetworkHandler() == null) return false;
         if (killLocked()) return false; // Loot Safe: waiting to hear whether the last one killed
         if (tickAttackId != -1 && tickAttackId != id) return false; // Grim: one entity per tick
+        if (dev.bali.util.GrimTick.otherClicked()) return false; // Surround & co. clicked in this Grim tick
         if (rotate.on() && !serverLooksAt(mc.player.getEyePos(), crystalBox(pos), breakRange.getD())) {
             dbg("attack id=" + id + " skipped: server rotation is not on the crystal");
             return false;

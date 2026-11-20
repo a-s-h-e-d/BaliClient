@@ -1,5 +1,6 @@
 package dev.bali.module.combat;
 
+import dev.bali.manager.RotationPriority;
 import dev.bali.Bali;
 import dev.bali.event.EventHandler;
 import dev.bali.event.events.Events;
@@ -120,7 +121,7 @@ public final class MaceDtap extends Module {
         LivingEntity t = findTarget();
         if (t == null) return;
         Vec3d aim = RotationUtil.closestPoint(t.getBoundingBox(), mc.player.getEyePos());
-        Bali.ROTATIONS.rotate(aim, 55, () -> {
+        Bali.ROTATIONS.rotate(aim, RotationPriority.MACE_DTAP, () -> {
             if (!t.isAlive() || !inRange(t) || !smashReady()) return;
             mc.interactionManager.attackEntity(mc.player, t);
             mc.player.swingHand(Hand.MAIN_HAND);

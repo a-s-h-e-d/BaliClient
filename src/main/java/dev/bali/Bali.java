@@ -23,7 +23,9 @@ import org.slf4j.LoggerFactory;
 
 public final class Bali implements ClientModInitializer {
     public static final String NAME = "Bali";
-    public static final String VERSION = "0.1.0";
+    /** From fabric.mod.json, which gradle fills in from mod_version. */
+    public static final String VERSION = net.fabricmc.loader.api.FabricLoader.getInstance().getModContainer("bali")
+        .map(c -> c.getMetadata().getVersion().getFriendlyString()).orElse("?");
     public static final Logger LOG = LoggerFactory.getLogger(NAME);
 
     public static final EventBus EVENTS = new EventBus();
@@ -47,6 +49,7 @@ public final class Bali implements ClientModInitializer {
         CONFIG = new ConfigManager();
 
         EVENTS.subscribe(ROTATIONS);
+        EVENTS.subscribe(dev.bali.util.GrimTick.INSTANCE);
         EVENTS.subscribe(SERVER);
         EVENTS.subscribe(POPS);
         EVENTS.subscribe(MODULES);

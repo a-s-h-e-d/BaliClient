@@ -1,5 +1,6 @@
 package dev.bali.module.player;
 
+import dev.bali.manager.RotationPriority;
 import dev.bali.Bali;
 import dev.bali.event.EventHandler;
 import dev.bali.event.events.Events;
@@ -96,7 +97,7 @@ public final class XPThrower extends Module {
             else InvUtil.silentSwap(bottleSlot, use);
         };
         // the item-use packet carries the rotation the bottle flies along, so throw while the server has pitch 90
-        if (lookDown.on()) Bali.ROTATIONS.rotate(mc.player.getYaw(), 90f, 60, throwAll);
+        if (lookDown.on()) Bali.ROTATIONS.rotate(mc.player.getYaw(), 90f, RotationPriority.XP_THROWER, throwAll);
         else throwAll.run();
     }
 

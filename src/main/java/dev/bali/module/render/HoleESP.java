@@ -6,12 +6,10 @@ import dev.bali.module.Category;
 import dev.bali.module.Module;
 import dev.bali.setting.ColorSetting;
 import dev.bali.setting.NumberSetting;
+import dev.bali.util.HoleUtil;
 import dev.bali.util.Render3D;
-import net.minecraft.block.BlockState;
-import net.minecraft.block.Blocks;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
-import net.minecraft.util.math.Direction;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -43,32 +41,12 @@ public final class HoleESP extends Module {
             for (int y = -r / 2 - 1; y <= r / 2; y++) {
                 for (int z = -r; z <= r; z++) {
                     BlockPos p = c.add(x, y, z);
-                    Boolean type = holeType(p);
+                    Boolean type = HoleUtil.holeType(p);
                     if (type != null) found.add(new Hole(p, type));
                 }
             }
         }
         holes = found;
-    }
-
-    /** null if not a hole, true if bedrock-only, false if obsidian/mixed. */
-    private Boolean holeType(BlockPos p) {
-        if (!air(p) || !air(p.up()) || !air(p.up(2))) return null;
-        boolean allBedrock = true;
-        for (Direction d : new Direction[]{Direction.DOWN, Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST}) {
-            BlockState s = mc.world.getBlockState(p.offset(d));
-            if (s.isOf(Blocks.BEDROCK)) continue;
-            if (s.isOf(Blocks.OBSIDIAN) || s.isOf(Blocks.CRYING_OBSIDIAN) || s.isOf(Blocks.RESPAWN_ANCHOR) || s.isOf(Blocks.ENDER_CHEST) || s.isOf(Blocks.NETHERITE_BLOCK)) {
-                allBedrock = false;
-                continue;
-            }
-            return null;
-        }
-        return allBedrock;
-    }
-
-    private boolean air(BlockPos p) {
-        return mc.world.getBlockState(p).getCollisionShape(mc.world, p).isEmpty();
     }
 
     @EventHandler

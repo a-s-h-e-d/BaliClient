@@ -3,7 +3,7 @@
   "id": "bali",
   "version": "${version}",
   "name": "Bali",
-  "description": "Bali utility client",
+  "description": "A Minecraft combat and utility mod for anarchy servers",
   "authors": ["Bali"],
   "license": "MIT",
   "environment": "client",

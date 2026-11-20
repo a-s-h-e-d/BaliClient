@@ -114,6 +114,22 @@ public final class RotationManager {
         pending = null;
     }
 
+    /**
+     * A kick or server switch can land between a module queueing a rotation and the move packet that
+     * sends it; without this the old click (aimed at a block in the previous world) fires on join.
+     */
+    @EventHandler(priority = 1000)
+    private void onJoin(Events.Join e) {
+        pending = null;
+        active = null;
+    }
+
+    @EventHandler(priority = 1000)
+    private void onLeave(Events.Leave e) {
+        pending = null;
+        active = null;
+    }
+
     @EventHandler(priority = -1000)
     private void onSend(Events.PacketSend e) {
         if (e.packet instanceof PlayerMoveC2SPacket p && p.changesLook()) {

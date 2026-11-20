@@ -14,13 +14,13 @@ Open the menu with **Right Shift**. Commands use the `.` prefix (`.help`).
 
 ## Modules
 
-**Combat**: AntiMace, AutoArmor, AutoCrystal, AutoLog, AutoTotem, Criticals, ElytraMace, KillAura, MaceDtap, Surround, Velocity
+**Combat**: AntiMace, AutoArmor, AutoCrystal, AutoLog, AutoTotem, AutoTrap, Criticals, ElytraMace, HoleFiller, KillAura, MaceDtap, Surround, Velocity
 
 **Movement**: AutoWalk, Blink, ElytraFly, ElytraRecast, NoFall, NoSlow, RocketControl, Speed, Sprint, YawLock
 
 **Player**: AntiHunger, AutoEat, AutoRespawn, AutoTool, FastPlace, MiddleClick, Replenish, XPThrower
 
-**Render**: BlockESP, BreakESP, ESP, Freecam, Fullbright, HoleESP, Nametags, NewChunks, NoParticles, NoRender, ShulkerViewer, StashFinder, StorageESP, Tracers, Xray
+**Render**: BlockESP, BreakESP, ESP, FootESP, Freecam, Fullbright, HoleESP, Nametags, NewChunks, NoParticles, NoRender, ShulkerViewer, StashFinder, StorageESP, Tracers, Xray
 
 **Misc**: AutoReconnect, FakePlayer, PopCounter, StashFinderBot
 
