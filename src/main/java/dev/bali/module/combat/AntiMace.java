@@ -196,16 +196,19 @@ public final class AntiMace extends Module {
 
     private void respond(PlayerEntity t) {
         ElytraMace em = Bali.MODULES.get(ElytraMace.class);
+        // our own smash is already falling: it needs the mace in hand and the chestplate on
+        if (em.striking()) return;
         boolean gliding = mc.player.isGliding();
 
-        if (chestplate.on() && !gliding && !em.busy() && MaceUtil.wearingElytra()
+        // ElytraMace stands down while we defend (see ElytraMace.onTick), so this runs mid-hunt too
+        if (chestplate.on() && !gliding && MaceUtil.wearingElytra()
             && !Bali.MODULES.get(dev.bali.module.movement.ElytraRecast.class).busy()) {
             int chest = MaceUtil.findChestplate();
             if (chest != -1 && dev.bali.util.ClickGate.tryClick() && MaceUtil.equipChest(chest)) Recorder.log("ANTIMACE", "chestplate in");
         }
 
         if (gliding) {
-            if (dodge.on() && !em.busy()) dodgeFrom(t);
+            if (dodge.on()) dodgeFrom(t);
             return; // can't block while gliding
         }
         if (shield.on()) raiseShield(t);

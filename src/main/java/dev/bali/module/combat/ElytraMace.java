@@ -94,6 +94,16 @@ public final class ElytraMace extends Module {
     /** True while hunting a target (other flight modules stand down). */
     public boolean busy() { return isEnabled() && phase != Phase.Idle; }
 
+    /**
+     * The hit itself: chestplate swapped in, falling onto the target. Nothing may take the hand or
+     * the chest slot now, not even AntiMace (the smash also cancels our own fall).
+     */
+    public boolean striking() { return isEnabled() && phase == Phase.Strike; }
+
+    /** Someone AntiMace caught diving at us: hunted next, once their dive is over. */
+    private PlayerEntity counter;
+    private long counterUntil;
+
     @Override
     protected void onEnable() {
         phase = Phase.Idle;
@@ -101,6 +111,7 @@ public final class ElytraMace extends Module {
         swapped = false;
         hits = 0;
         tracked = null;
+        counter = null;
         restoreChestplate = !nullCheck() && mc.player.getEquippedStack(EquipmentSlot.CHEST).isIn(ItemTags.CHEST_ARMOR);
     }
 
@@ -136,8 +147,24 @@ public final class ElytraMace extends Module {
             return;
         }
 
+        PlayerEntity threat = Bali.MODULES.get(AntiMace.class).threat();
+        if (threat != null && threat != counter) {
+            counter = threat;
+            counterUntil = System.currentTimeMillis() + 10_000;
+            Recorder.log("EMACE", "counter: " + threat.getGameProfile().name() + " is diving at us, hunting them next");
+        }
+        LivingEntity before = target;
         target = pickTarget();
+        // re-plan a dive that was aimed at someone else
+        if (target != before && before != null && phase == Phase.Dive) setPhase(Phase.Approach, "switched to the attacker");
         trackTarget();
+        // Safety first: while a dive is coming at us AntiMace shields, swaps the chestplate in or
+        // rockets out of the way. We stand down, except for our own hit (already committed) and a
+        // recovery in the air (pausing it would leave us falling in a chestplate).
+        if (threat != null && phase != Phase.Strike && !(phase == Phase.Recover && !mc.player.isOnGround())) {
+            releaseJump();
+            return;
+        }
         if (target == null) {
             if (phase == Phase.Dive || phase == Phase.Strike || swapped) setPhase(Phase.Recover, "target lost");
             else if (phase != Phase.Recover) {
@@ -354,6 +381,14 @@ public final class ElytraMace extends Module {
 
     private LivingEntity pickTarget() {
         double maxSq = targetRange.getD() * targetRange.getD();
+        // the attacker comes first; not mid-hit, the strike is committed to its target
+        if (counter != null && phase != Phase.Strike) {
+            PlayerEntity c = counter;
+            boolean valid = System.currentTimeMillis() < counterUntil && c.isAlive() && !c.isRemoved()
+                && EntityUtil.isAliveTarget(c) && !EntityUtil.isFriend(c) && mc.player.squaredDistanceTo(c) <= maxSq;
+            if (valid) return c;
+            counter = null;
+        }
         if (target != null && target.isAlive() && !target.isRemoved() && mc.player.squaredDistanceTo(target) <= maxSq * 1.5) return target;
         LivingEntity best = null;
         double bestSq = maxSq;
