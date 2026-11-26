@@ -18,18 +18,6 @@ import net.minecraft.item.Items;
 import net.minecraft.util.Hand;
 import org.lwjgl.glfw.GLFW;
 
-/**
- * Throws experience bottles at your feet to mend your gear. Toggle with B.
- *
- * The bottles fly along the rotation in the item-use packet, so with Look Down they are thrown
- * from a silent pitch-90 rotation (the camera stays free) and land on you. Bottles come from the
- * offhand or hotbar (silent swap); with Refill a stack is moved up from the inventory when the
- * hotbar runs out. Pauses while you or AutoEat are eating, since a slot change would cancel it.
- *
- * You can only absorb one XP orb every 2 ticks, so throwing faster just piles orbs up. With Save
- * Bottles it waits while the XP already on the ground or in the air covers what is left to repair
- * (mending repairs 2 durability per XP), or while orbs are queuing up at your feet.
- */
 public final class XPThrower extends Module {
     private final NumberSetting perTick = number("Bottles/Tick", 1, 1, 3, 1, "Bottles thrown each tick (vanilla right-click is one every 4 ticks)");
     private final BoolSetting lookDown = bool("Look Down", true, "Silently look straight down so the bottles land on you");
@@ -38,9 +26,7 @@ public final class XPThrower extends Module {
     private final BoolSetting pauseEating = bool("Pause Eating", true, "Don't throw while eating (the slot swap would cancel the eat)");
     private final BoolSetting saveBottles = bool("Save Bottles", true, "Wait while the XP already thrown covers the repair, or orbs are piling up");
 
-    /** Average XP in a bottle (3 to 11). */
     private static final int BOTTLE_XP = 7;
-    /** Orbs waiting at your feet before we stop adding more. */
     private static final int ORB_BACKLOG = 6;
 
     private int thrown;
@@ -56,7 +42,6 @@ public final class XPThrower extends Module {
     @Override
     protected void onEnable() { thrown = 0; }
 
-    /** Bottles thrown since it was turned on (for tests). */
     public int thrown() { return thrown; }
 
     @EventHandler
@@ -71,7 +56,7 @@ public final class XPThrower extends Module {
         boolean offhand = mc.player.getOffHandStack().isOf(Items.EXPERIENCE_BOTTLE);
         int slot = offhand ? -1 : InvUtil.findHotbar(Items.EXPERIENCE_BOTTLE);
         if (!offhand && slot == -1) {
-            if (refill.on() && moveUp()) return; // thrown from the hotbar next tick
+            if (refill.on() && moveUp()) return;
             if (autoDisable.on()) {
                 ChatUtil.info("XPThrower: out of bottles");
                 setEnabled(false);
@@ -96,12 +81,10 @@ public final class XPThrower extends Module {
             if (hand == Hand.OFF_HAND) use.run();
             else InvUtil.silentSwap(bottleSlot, use);
         };
-        // the item-use packet carries the rotation the bottle flies along, so throw while the server has pitch 90
         if (lookDown.on()) Bali.ROTATIONS.rotate(mc.player.getYaw(), 90f, RotationPriority.XP_THROWER, throwAll);
         else throwAll.run();
     }
 
-    /** Moves a bottle stack from the main inventory into an empty hotbar slot. */
     private boolean moveUp() {
         if (!InvUtil.canClickInventory()) return false;
         int inv = -1;
@@ -109,18 +92,17 @@ public final class XPThrower extends Module {
         if (inv == -1) return false;
         int empty = InvUtil.findHotbar(ItemStack::isEmpty);
         if (empty == -1) return false;
-        if (!dev.bali.util.ClickGate.tryClick()) return true; // keys released; the move goes out next tick
+        if (!dev.bali.util.ClickGate.tryClick()) return true;
         InvUtil.swapClick(InvUtil.toScreenSlot(inv), empty);
         return true;
     }
 
-    /** XP lying around us or still flying in bottles already covers the repair, or orbs are queuing. */
     private boolean enoughOnTheWay() {
         var area = mc.player.getBoundingBox().expand(4);
         int orbs = 0, xp = 0;
         for (var orb : mc.world.getEntitiesByClass(net.minecraft.entity.ExperienceOrbEntity.class, area, o -> true)) {
             orbs++;
-            xp += orb.getValue(); // merged orbs show as one, so this can only undercount
+            xp += orb.getValue();
         }
         for (var b : mc.world.getEntitiesByClass(net.minecraft.entity.projectile.thrown.ExperienceBottleEntity.class, area.expand(4), o -> true)) xp += BOTTLE_XP;
         return orbs >= ORB_BACKLOG || xp * 2 >= damageToRepair();
@@ -135,7 +117,6 @@ public final class XPThrower extends Module {
         return total;
     }
 
-    /** Anything worn or held that has Mending and is damaged. */
     private boolean needsRepair() {
         for (EquipmentSlot s : EquipmentSlot.values()) {
             ItemStack st = mc.player.getEquippedStack(s);

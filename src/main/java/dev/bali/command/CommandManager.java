@@ -13,7 +13,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.stream.Collectors;
 
-/** Chat commands, e.g. ".t killaura", ".bind autocrystal r", ".set killaura range 3.5". */
 public final class CommandManager {
     private String prefix = ".";
 
@@ -21,7 +20,6 @@ public final class CommandManager {
 
     public void setPrefix(String p) { if (p != null && !p.isBlank()) prefix = p; }
 
-    /** @return true if the message was a command and must not be sent to the server. */
     public boolean handle(String message) {
         if (!message.startsWith(prefix)) return false;
         String[] args = message.substring(prefix.length()).trim().split("\\s+");

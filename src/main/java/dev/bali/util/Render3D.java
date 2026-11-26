@@ -14,10 +14,6 @@ import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Vec3d;
 import org.joml.Vector3f;
 
-/**
- * Immediate-mode world rendering through walls. Call only inside a Render3D event.
- * All coordinates are world coordinates; the camera offset is applied here.
- */
 public final class Render3D {
     private Render3D() {}
 
@@ -58,8 +54,6 @@ public final class Render3D {
         LINE_BUFFER.draw();
     }
 
-    // ---- primitives ----
-
     public static void boxFill(Box box, int argb) {
         if (((argb >>> 24) & 0xFF) == 0) return;
         Box b = box.offset(-cam.x, -cam.y, -cam.z);
@@ -67,17 +61,11 @@ public final class Render3D {
         MatrixStack.Entry e = STACK.peek();
         float x1 = (float) b.minX, y1 = (float) b.minY, z1 = (float) b.minZ;
         float x2 = (float) b.maxX, y2 = (float) b.maxY, z2 = (float) b.maxZ;
-        // bottom
         quad(vc, e, argb, x1, y1, z1, x2, y1, z1, x2, y1, z2, x1, y1, z2);
-        // top
         quad(vc, e, argb, x1, y2, z1, x1, y2, z2, x2, y2, z2, x2, y2, z1);
-        // north
         quad(vc, e, argb, x1, y1, z1, x1, y2, z1, x2, y2, z1, x2, y1, z1);
-        // south
         quad(vc, e, argb, x1, y1, z2, x2, y1, z2, x2, y2, z2, x1, y2, z2);
-        // west
         quad(vc, e, argb, x1, y1, z1, x1, y1, z2, x1, y2, z2, x1, y2, z1);
-        // east
         quad(vc, e, argb, x2, y1, z1, x2, y2, z1, x2, y2, z2, x2, y1, z2);
     }
 
@@ -116,7 +104,6 @@ public final class Render3D {
         boxOutline(box, outline, width);
     }
 
-    /** Line between two world positions. */
     public static void line(Vec3d a, Vec3d b, int argb, float width) {
         VertexConsumer vc = LINE_BUFFER.getBuffer(LINES);
         line(vc, STACK.peek(),
@@ -124,7 +111,6 @@ public final class Render3D {
             (float) (b.x - cam.x), (float) (b.y - cam.y), (float) (b.z - cam.z), argb, width);
     }
 
-    /** Line from a camera-relative start (e.g. the crosshair) to a world position. */
     public static void lineFromCamera(Vec3d camRelativeStart, Vec3d worldEnd, int argb, float width) {
         VertexConsumer vc = LINE_BUFFER.getBuffer(LINES);
         line(vc, STACK.peek(),
@@ -142,9 +128,6 @@ public final class Render3D {
 
     public static Vec3d cameraPos() { return cam; }
 
-    // ---- view bobbing aware camera math ----
-
-    /** Bob + hurt-tilt matrix and the full world projection, captured each frame in GameRenderer.renderWorld. */
     private static final org.joml.Matrix4f BOB = new org.joml.Matrix4f();
     private static final org.joml.Matrix4f PROJ = new org.joml.Matrix4f();
 
@@ -153,9 +136,6 @@ public final class Render3D {
         PROJ.set(proj);
     }
 
-    /**
-     * Camera-relative start point for tracers that lands exactly on the crosshair.
-     */
     public static Vec3d crosshair() {
         org.joml.Vector4f v = new org.joml.Vector4f(0, 0, -0.1f, 1);
         new org.joml.Matrix4f(BOB).invert().transform(v);
@@ -164,10 +144,6 @@ public final class Render3D {
         return new Vec3d(p.x, p.y, p.z);
     }
 
-    /**
-     * World position to GUI coordinates (scaled screen pixels) using this frame's camera, or null
-     * when the point is behind the camera. x, y = screen position; z = view depth.
-     */
     public static Vec3d project(Vec3d world, int guiWidth, int guiHeight) {
         var c = net.minecraft.client.MinecraftClient.getInstance().gameRenderer.getCamera();
         Vec3d rel = world.subtract(c.getCameraPos());
@@ -180,10 +156,6 @@ public final class Render3D {
         return new Vec3d((nx + 1) / 2 * guiWidth, (1 - ny) / 2 * guiHeight, -view.z);
     }
 
-    /**
-     * Called from mod init so our pipelines are registered before the first resource reload,
-     * which is what compiles every registered pipeline's shaders.
-     */
     public static void init() {}
 
     public static boolean precompile() {

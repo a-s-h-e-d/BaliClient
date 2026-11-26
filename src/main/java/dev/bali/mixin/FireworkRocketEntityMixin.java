@@ -12,10 +12,6 @@ import org.spongepowered.asm.mixin.injection.At;
 
 @Mixin(FireworkRocketEntity.class)
 public abstract class FireworkRocketEntityMixin {
-    /**
-     * The rocket push is purely client-side. While a module picks the velocity itself
-     * (inside what Grim accepts during a burn), the vanilla push must not be added on top.
-     */
     @WrapOperation(method = "tick", at = @At(value = "INVOKE", target = "Lnet/minecraft/entity/LivingEntity;setVelocity(Lnet/minecraft/util/math/Vec3d;)V"))
     private void bali$rocketPush(LivingEntity shooter, Vec3d velocity, Operation<Void> original) {
         if (shooter instanceof ClientPlayerEntity && GrimBoost.ownsRocket()) return;

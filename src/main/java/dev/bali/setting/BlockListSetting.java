@@ -13,9 +13,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
-/**
-Command syntax: "add diamond_ore", "del diamond_ore", "clear",
- */
 public class BlockListSetting extends Setting<Set<Block>> {
     private int version;
 

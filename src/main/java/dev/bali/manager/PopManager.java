@@ -12,7 +12,6 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
-/** Counts totem pops per player (entity status 35) and posts pop/death events on the main thread. */
 public final class PopManager {
     private static final MinecraftClient mc = MinecraftClient.getInstance();
     private final Map<UUID, Integer> pops = new ConcurrentHashMap<>();

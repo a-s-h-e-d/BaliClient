@@ -26,27 +26,14 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
-/**
- * The map StashFinderBot draws while it searches: what the ground looks like (vanilla map colors,
- * 2x2 samples per chunk), the NewChunks verdict of every chunk, the path flown and the stashes found.
- *
- * Memory: terrain and overlay live in 64x64-chunk tiles of plain byte arrays (20 KB per tile), so a
- * 10k-radius spiral (1.5 M chunks) is about 8 MB. Files: {@link #save} writes the data (gzip) so a
- * paused search continues the same map, {@link #exportPng} a picture to look at outside the game.
- *
- * Threads: the main thread writes; the map renderer and the savers read on background threads.
- * Readers only ever see bytes being filled in, so the worst case is a pixel from the previous frame.
- */
 public final class StashMap {
-    public static final int TILE = 64;           // chunks per tile side
-    public static final int SUB = 2;             // terrain samples per chunk side
-    private static final int TS = TILE * SUB;    // terrain samples per tile side
-    private static final int MAGIC = 0x424D4150; // "BMAP"
+    public static final int TILE = 64;
+    public static final int SUB = 2;
+    private static final int TS = TILE * SUB;
+    private static final int MAGIC = 0x424D4150;
     private static final int FORMAT = 1;
 
-    /** NewChunks verdict per chunk. */
     public static final byte NC_NONE = 0, NC_NEW = 1, NC_SINCE = 2, NC_OLD = 3;
-    /** Terrain byte 0 = never seen; 1 = seen, nothing there (End void). Otherwise MapColor id << 2 | brightness. */
     private static final byte SEEN_EMPTY = 1;
 
     public static final int UNSEEN = 0xFF0E0E12, EMPTY = 0xFF1C1C22;
@@ -57,10 +44,8 @@ public final class StashMap {
         final byte[] nc = new byte[TILE * TILE];
     }
 
-    /** A stash marked on the map, with the reasons StashFinder flagged it. */
     public record Mark(long id, int x, int y, int z, double score, List<String> lines) {}
 
-    /** What part of the world a picture shows: center and blocks per pixel. */
     public record View(double centerX, double centerZ, double bpp) {
         public double toPxX(double x, int w) { return (x - centerX) / bpp + w / 2.0; }
         public double toPxZ(double z, int h) { return (z - centerZ) / bpp + h / 2.0; }
@@ -68,7 +53,6 @@ public final class StashMap {
         public double toWorldZ(double py, int h) { return centerZ + (py - h / 2.0) * bpp; }
     }
 
-    /** Pixels something can be drawn into: the GUI buffer or a PNG. */
     public interface Canvas {
         int width();
         int height();
@@ -82,11 +66,10 @@ public final class StashMap {
 
     private final Map<Long, Tile> tiles = new ConcurrentHashMap<>();
     private final Map<Long, Mark> marks = new ConcurrentHashMap<>();
-    private final List<Long> markOrder = java.util.Collections.synchronizedList(new ArrayList<>()); // #1 = first found
+    private final List<Long> markOrder = java.util.Collections.synchronizedList(new ArrayList<>());
     private volatile float[] path = new float[2048];
     private volatile int pathLen;
     private double lastX = Double.NaN, lastZ = Double.NaN;
-    // bounds of everything recorded, in blocks
     private volatile double minX, minZ, maxX, maxZ;
     private volatile boolean hasBounds;
     private volatile long version;
@@ -102,12 +85,8 @@ public final class StashMap {
         include(originX, originZ);
     }
 
-    /** Changes whenever something new is recorded (the GUI re-renders on change). */
     public long version() { return version; }
 
-    // ------------------------------------------------------------------ recording (main thread)
-
-    /** Samples the ground of a freshly loaded chunk. Nether: the floor under the roof, not the roof. */
     public void sampleChunk(WorldChunk chunk, boolean nether) {
         ChunkPos cp = chunk.getPos();
         Tile t = tile(cp.x, cp.z, true);
@@ -132,7 +111,6 @@ public final class StashMap {
                             while (depth < 10 && h - depth > bottom && chunk.getBlockState(m.set(bx, h - depth - 1, bz)).getFluidState().isIn(FluidTags.WATER)) depth++;
                             b = depth < 2 ? MapColor.Brightness.HIGH : depth < 5 ? MapColor.Brightness.NORMAL : MapColor.Brightness.LOW;
                         } else {
-                            // relief: lighter where the ground rises toward the south, darker where it falls (like vanilla maps)
                             int north = surface(chunk, bx, bz - 1, nether, bottom, m);
                             b = h > north ? MapColor.Brightness.HIGH : h < north ? MapColor.Brightness.LOW : MapColor.Brightness.NORMAL;
                         }
@@ -147,21 +125,18 @@ public final class StashMap {
         version++;
     }
 
-    /** Y of the top visible block of a column, or below the bottom for none. */
     private static int surface(WorldChunk chunk, int bx, int bz, boolean nether, int bottom, BlockPos.Mutable m) {
         if (nether) {
             int y = Math.min(chunk.getTopYInclusive(), 122);
-            while (y > bottom && !chunk.getBlockState(m.set(bx, y, bz)).isAir()) y--;   // through the roof
-            while (y > bottom && chunk.getBlockState(m.set(bx, y, bz)).isAir()) y--;    // down to the floor
+            while (y > bottom && !chunk.getBlockState(m.set(bx, y, bz)).isAir()) y--;
+            while (y > bottom && chunk.getBlockState(m.set(bx, y, bz)).isAir()) y--;
             return y;
         }
         int y = chunk.sampleHeightmap(Heightmap.Type.WORLD_SURFACE, bx & 15, bz & 15);
-        // the packet heightmap can lag a block behind; never return air
         for (int i = 0; i < 16 && y >= bottom && chunk.getBlockState(m.set(bx, y, bz)).isAir(); i++) y--;
         return y;
     }
 
-    /** NewChunks verdict of a chunk (NC_*). */
     public void setOverlay(int cx, int cz, byte state) {
         Tile t = tile(cx, cz, true);
         int i = (cz & (TILE - 1)) * TILE + (cx & (TILE - 1));
@@ -171,7 +146,6 @@ public final class StashMap {
         }
     }
 
-    /** Adds a point of the flown path; ignores tiny moves, breaks the line on a teleport. */
     public void addPathPoint(double x, double z) {
         if (!Double.isNaN(lastX)) {
             double d = Math.hypot(x - lastX, z - lastZ);
@@ -185,7 +159,6 @@ public final class StashMap {
         version++;
     }
 
-    /** The next path point starts a new line (relog, pause). */
     public void breakPath() {
         if (pathLen >= 2 && !Float.isNaN(path[pathLen - 2])) append(Float.NaN, Float.NaN);
         lastX = lastZ = Double.NaN;
@@ -211,7 +184,6 @@ public final class StashMap {
         }
     }
 
-    /** Stashes in the order they were found (their numbers on the map, picture and list). */
     public List<Mark> marks() {
         List<Long> ids;
         synchronized (markOrder) { ids = new ArrayList<>(markOrder); }
@@ -223,7 +195,6 @@ public final class StashMap {
         return l;
     }
 
-    /** Whether the map has seen this chunk (so a stash there was found on this map). */
     public boolean seen(int cx, int cz) {
         Tile t = tile(cx, cz, false);
         if (t == null) return false;
@@ -234,8 +205,6 @@ public final class StashMap {
         Tile t = tile(cx, cz, false);
         return t == null ? NC_NONE : t.nc[(cz & (TILE - 1)) * TILE + (cx & (TILE - 1))];
     }
-
-    // ------------------------------------------------------------------ geometry
 
     private void include(double x, double z) {
         if (!hasBounds) {
@@ -250,10 +219,8 @@ public final class StashMap {
         if (z > maxZ) maxZ = z;
     }
 
-    /** {minX, minZ, maxX, maxZ} of everything recorded. */
     public double[] bounds() { return new double[]{minX, minZ, maxX, maxZ}; }
 
-    /** Largest distance (per axis) from the origin of anything recorded. */
     public double reach() {
         return Math.max(Math.max(originX - minX, maxX - originX), Math.max(originZ - minZ, maxZ - originZ));
     }
@@ -269,14 +236,10 @@ public final class StashMap {
         return ((cz & (TILE - 1)) * SUB + sz) * TS + (cx & (TILE - 1)) * SUB + sx;
     }
 
-    // ------------------------------------------------------------------ rendering (any thread)
-
-    /** Overlay colors (RGB, alpha = strength); 0 = don't draw that kind. Index by NC_*. */
     public record Overlay(int[] colors) {
         public static final Overlay NONE = new Overlay(new int[4]);
     }
 
-    /** Terrain + NewChunks overlay + grid + flown path. Markers are drawn on top by the caller. */
     public void render(Canvas c, View v, Overlay overlay, boolean grid) {
         int w = c.width(), h = c.height();
         long lastTileKey = Long.MIN_VALUE;
@@ -309,7 +272,6 @@ public final class StashMap {
 
     private static final double[] GRID_STEPS = {16, 64, 128, 256, 500, 1000, 2500, 5000, 10000, 25000, 50000, 100000, 250000, 500000, 1000000};
 
-    /** World-unit spacing of grid lines for a scale: about 50 px apart. */
     public static double gridStep(double bpp) {
         for (double s : GRID_STEPS) if (s / bpp >= 50) return s;
         return GRID_STEPS[GRID_STEPS.length - 1];
@@ -345,7 +307,6 @@ public final class StashMap {
                 continue;
             }
             double px = v.toPxX(p[i], w), py = v.toPxZ(p[i + 1], h);
-            // 2 px wide: the picture is drawn smaller than it is (HUD, GUI), a 1 px line would break up
             if (!Double.isNaN(px0)) line(c, px0, py0, px, py, PATH, 2);
             else plot(c, (int) Math.floor(px), (int) Math.floor(py), PATH);
             px0 = px;
@@ -359,7 +320,6 @@ public final class StashMap {
 
     public static void line(Canvas c, double x0, double y0, double x1, double y1, int argb, int width) {
         int w = c.width(), h = c.height();
-        // reject lines completely off the picture
         if (Math.max(x0, x1) < 0 || Math.min(x0, x1) >= w || Math.max(y0, y1) < 0 || Math.min(y0, y1) >= h) return;
         double dx = x1 - x0, dy = y1 - y0;
         int steps = (int) Math.ceil(Math.max(Math.abs(dx), Math.abs(dy)));
@@ -376,7 +336,6 @@ public final class StashMap {
         if (x >= 0 && y >= 0 && x < c.width() && y < c.height()) c.set(x, y, argb);
     }
 
-    /** src over dst; src alpha is the strength. */
     public static int blend(int dst, int src) {
         int a = src >>> 24;
         if (a == 0) return dst;
@@ -395,9 +354,6 @@ public final class StashMap {
         };
     }
 
-    // ------------------------------------------------------------------ files
-
-    /** Data file: everything needed to continue or view this map later. */
     public synchronized void save(Path file) throws IOException {
         Files.createDirectories(file.getParent());
         Path tmp = file.resolveSibling(file.getFileName() + ".tmp");
@@ -451,7 +407,6 @@ public final class StashMap {
                 in.readFully(t.nc);
                 m.tiles.put(k, t);
                 int tx = ChunkPos.getPackedX(k), tz = ChunkPos.getPackedZ(k);
-                // bounds from the tile's seen chunks
                 for (int cz = 0; cz < TILE; cz++)
                     for (int cx = 0; cx < TILE; cx++)
                         if (t.color[(cz * SUB) * TS + cx * SUB] != 0) {
@@ -481,15 +436,11 @@ public final class StashMap {
         }
     }
 
-    /**
-     * A picture of the whole map (terrain, overlay, grid, path, numbered stashes, start) plus a text
-     * file listing each numbered stash with why it was flagged. Up to 4096 px a side.
-     */
     public void exportPng(Path png, Path txt, Overlay overlay, double playerX, double playerZ) throws IOException {
         double spanX = maxX - minX, spanZ = maxZ - minZ;
-        double bpp = 16.0 / SUB; // full detail: one pixel per terrain sample
-        while (Math.max(spanX, spanZ) / bpp > 3072) bpp *= 2;     // big searches: keep the file and memory sane
-        while (Math.max(spanX, spanZ) / bpp < 600 && bpp > 1) bpp /= 2; // small ones: blow up so it's readable
+        double bpp = 16.0 / SUB;
+        while (Math.max(spanX, spanZ) / bpp > 3072) bpp *= 2;
+        while (Math.max(spanX, spanZ) / bpp < 600 && bpp > 1) bpp /= 2;
         int w = (int) Math.ceil(spanX / bpp) + 40, h = (int) Math.ceil(spanZ / bpp) + 40;
         View v = new View((minX + maxX) / 2, (minZ + maxZ) / 2, bpp);
         List<Mark> ms = marks();
@@ -502,13 +453,11 @@ public final class StashMap {
                 public void set(int x, int y, int argb) { img.setColorArgb(x, y, argb); }
             };
             render(c, v, overlay, true);
-            // start
             int ox = (int) v.toPxX(originX, w), oz = (int) v.toPxZ(originZ, h);
             for (int i = -4; i <= 4; i++) {
                 plot(c, ox + i, oz, ORIGIN);
                 plot(c, ox, oz + i, ORIGIN);
             }
-            // where the bot is / stopped
             if (!Double.isNaN(playerX)) {
                 int px = (int) v.toPxX(playerX, w), pz = (int) v.toPxZ(playerZ, h);
                 for (int dz = -2; dz <= 2; dz++) for (int dx = -2; dx <= 2; dx++) plot(c, px + dx, pz + dz, Math.abs(dx) == 2 || Math.abs(dz) == 2 ? 0xFF000000 : 0xFFFFFFFF);
@@ -557,9 +506,6 @@ public final class StashMap {
         return v == Math.rint(v) ? String.valueOf((long) v) : String.format(Locale.ROOT, "%.1f", v);
     }
 
-    // ------------------------------------------------------------------ tiny font for the PNG
-
-    /** 3x5 pixel font: digits, letters (upper case shapes), and a few signs. */
     static final class PixelFont {
         private static final Map<Character, int[]> GLYPHS = new java.util.HashMap<>();
 

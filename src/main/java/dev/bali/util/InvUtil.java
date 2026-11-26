@@ -8,10 +8,6 @@ import net.minecraft.screen.slot.SlotActionType;
 
 import java.util.function.Predicate;
 
-/**
- * Inventory helpers. "Inventory index" = PlayerInventory index (0-8 hotbar, 9-35 main,
- * 36-39 armor feet..head, 40 offhand). "Screen slot" = PlayerScreenHandler slot id.
- */
 public final class InvUtil {
     private InvUtil() {}
 
@@ -25,7 +21,6 @@ public final class InvUtil {
 
     public static int findHotbar(Item item) { return findHotbar(s -> s.isOf(item)); }
 
-    /** Searches main inventory (9-35) then hotbar (0-8). */
     public static int findInventory(Predicate<ItemStack> p) {
         for (int i = 9; i < 36; i++) if (p.test(mc.player.getInventory().getStack(i))) return i;
         for (int i = 0; i < 9; i++) if (p.test(mc.player.getInventory().getStack(i))) return i;
@@ -46,24 +41,19 @@ public final class InvUtil {
     public static int toScreenSlot(int invIndex) {
         if (invIndex >= 0 && invIndex < 9) return 36 + invIndex;
         if (invIndex < 36) return invIndex;
-        if (invIndex < 40) return 8 - (invIndex - 36); // 36 feet -> 8, 39 head -> 5
+        if (invIndex < 40) return 8 - (invIndex - 36);
         if (invIndex == 40) return OFFHAND_SCREEN_SLOT;
         return -1;
     }
 
     public static int selected() { return mc.player.getInventory().getSelectedSlot(); }
 
-    /** Selects a hotbar slot client-side and tells the server immediately. */
     public static void select(int slot) {
         if (slot < 0 || slot > 8) return;
         mc.player.getInventory().setSelectedSlot(slot);
         mc.interactionManager.syncSelectedSlot();
     }
 
-    /**
-     * Runs {@code action} holding hotbar {@code slot}, then switches back. Server sees two
-     * slot packets around the action; the client view never changes.
-     */
     public static boolean silentSwap(int slot, Runnable action) {
         if (slot < 0 || slot > 8) return false;
         int prev = selected();
@@ -80,11 +70,6 @@ public final class InvUtil {
         return true;
     }
 
-    /**
-     * Uses an item anywhere in the inventory by swapping it into the selected hotbar slot with a
-     * SWAP click, running the action, and swapping back. No hotbar slot change is ever sent.
-     * Returns false (nothing done, keys released) when Grim would cancel the click: try next tick.
-     */
     public static boolean invSwap(int invIndex, Runnable action) {
         if (invIndex < 0 || invIndex > 35) return false;
         int sel = selected();
@@ -92,7 +77,7 @@ public final class InvUtil {
             action.run();
             return true;
         }
-        if (!ClickGate.tryClick()) return false; // keys released this tick; the caller tries again next tick
+        if (!ClickGate.tryClick()) return false;
         int screenSlot = toScreenSlot(invIndex);
         swapClick(screenSlot, sel);
         try {
@@ -103,7 +88,6 @@ public final class InvUtil {
         return true;
     }
 
-    /** SWAP click: exchanges screen slot with hotbar button 0-8 (or 40 for offhand). */
     public static void swapClick(int screenSlot, int button) {
         mc.interactionManager.clickSlot(mc.player.playerScreenHandler.syncId, screenSlot, button, SlotActionType.SWAP, mc.player);
     }
@@ -116,19 +100,16 @@ public final class InvUtil {
         mc.interactionManager.clickSlot(mc.player.playerScreenHandler.syncId, screenSlot, 0, SlotActionType.QUICK_MOVE, mc.player);
     }
 
-    /** Moves an item between two screen slots with three pickups (handles occupied destination). */
     public static void move(int fromScreenSlot, int toScreenSlot) {
         pickup(fromScreenSlot);
         pickup(toScreenSlot);
         if (!mc.player.currentScreenHandler.getCursorStack().isEmpty()) pickup(fromScreenSlot);
     }
 
-    /** True when no container is open, i.e. we may click the player inventory "blind". */
     public static boolean canClickInventory() {
         return mc.player.currentScreenHandler == mc.player.playerScreenHandler;
     }
 
-    /** Some anticheats track the inventory as open after a click; this tells them it's closed. */
     public static void closeInventoryPacket() {
         if (mc.currentScreen == null && mc.getNetworkHandler() != null) {
             mc.getNetworkHandler().sendPacket(new CloseHandledScreenC2SPacket(mc.player.playerScreenHandler.syncId));

@@ -42,33 +42,6 @@ import java.util.Properties;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-/**
- * Elytra + firework search bot. Flies a coverage pattern at cruise altitude while StashFinder scans
- * every chunk the server sends and alerts/logs anything that looks player-built.
- *
- * Coverage: the server sends chunks within its view distance, so one pass sees a strip about
- * 2 * viewDistance chunks wide. Lanes are spaced exactly that far apart (measured from the chunks
- * actually loaded around you), so every chunk is seen once and nothing is flown twice.
- *
- * Rocket Mode Grim (default) is the fastest and cheapest: during a burn it takes the full velocity
- * Grim accepts (see {@link GrimBoost}) and climbs hard, then glides that height back down to
- * cruise altitude before the next rocket. About 37 b/s at 2-3 rockets a minute with flight 3 rockets.
- *
- * Pause / resume: turning the bot off is a pause. The spot on the search path where it stopped is
- * saved (also every 10 s while flying, so a kick or crash loses nothing). Turn it back on from
- * anywhere in that dimension and it flies straight back to that spot, then carries on, so no
- * chunk is skipped and none is flown twice.
- *
- * Anticheat: everything is vanilla input. The rotation is the real player rotation (turned smoothly),
- * the elytra opens on a fresh jump press like a human pressing space, and rockets are normal item
- * uses. Rockets are only used when speed drops below Rocket Speed, so one rocket lasts several
- * seconds of gliding. Elytras are swapped before they break; rockets are pulled from the inventory.
- *
- * Map: while it flies it records the ground of every chunk it sees, the NewChunks verdicts, the path
- * flown and every stash StashFinder flags ({@link StashMap}). Shown as a HUD minimap and in the
- * ClickGUI (hover a stash for why it was flagged); saved to .minecraft/bali/stashmaps/<server>/<dimension>/
- * as a .png picture, a .txt list of the stashes and the map data, which a resumed search keeps adding to.
- */
 public final class StashFinderBot extends Module {
     public enum Pattern { Spiral, Grid, Line }
     public enum Center { Here, Custom }
@@ -112,6 +85,9 @@ public final class StashFinderBot extends Module {
         .visibleWhen(() -> rocketMode != null && rocketMode.is(RocketMode.Custom));
     private final BoolSetting autoSaver = bool("Auto Saver", true, "Switch to Saver when rockets drop below Low Rockets");
     private final BoolSetting waitForChunks = bool("Wait For Chunks", true, "Don't boost while chunks ahead haven't loaded yet (slow servers / new chunks)");
+    private final BoolSetting chunkPacing = bool("Chunk Pacing", true,
+        "Fly only as fast as the server sends chunks, so the whole lane loads (2b2t: about 15-20 b/s). Rocket Mode Grim holds the speed; other modes only hold rockets");
+    private final NumberSetting maxSpeed = number("Max Speed", 60, 10, 60, 1, "Never faster than this on the search path, b/s (60 = no limit). Chunk Pacing stays under it");
     private final NumberSetting turnSpeed = number("Turn Speed", 6, 1, 30, 1, "Max degrees per tick");
     private final NumberSetting swapAt = number("Elytra Swap At", 15, 2, 100, 1, "Swap to a fresh elytra at this durability left");
     private final NumberSetting lowRockets = number("Low Rockets", 64, 0, 1000, 8, "Warn when rockets drop below this");
@@ -138,19 +114,21 @@ public final class StashFinderBot extends Module {
     private int setbackPause;
     private String reason = "";
     private boolean saverForced;
-    // pause / resume: last position on the search path, and whether we are flying back to it
     private double resumeX = Double.NaN, resumeZ = Double.NaN;
     private boolean returning;
     private boolean finished;
-    // rocket usage for the HUD estimate
     private int lastRocketCount = -1;
     private long statStartTick;
     private int statRockets;
     private double rocketsPerMin;
-    // map
+    private static final double PACE_MIN = 10, PACE_START = 20;
+    private double pace;
+    private int paceRisk, paceGood;
+    private boolean paceAhead = true;
+    private int chunkLoads, chunkRate;
     private StashMap map;
     private String progressMap;
-    private String lazyKey; // world we last looked for a saved map in (GUI viewing while the bot is off)
+    private String lazyKey;
     private static final ExecutorService MAP_IO = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "Bali-StashMap-IO");
         t.setDaemon(true);
@@ -161,7 +139,9 @@ public final class StashFinderBot extends Module {
     public StashFinderBot() {
         super("StashFinderBot", "Elytra + rocket bot that searches the map with StashFinder", Category.MISC);
         ClientChunkEvents.CHUNK_LOAD.register((world, chunk) -> {
-            if (isEnabled() && map != null && mapMatchesWorld(map)) map.sampleChunk(chunk, world.getRegistryKey() == World.NETHER);
+            if (!isEnabled()) return;
+            chunkLoads++;
+            if (map != null && mapMatchesWorld(map)) map.sampleChunk(chunk, world.getRegistryKey() == World.NETHER);
         });
     }
 
@@ -173,10 +153,9 @@ public final class StashFinderBot extends Module {
         int d = (int) Math.hypot(wp[0] - mc.player.getX(), wp[1] - mc.player.getZ());
         int rockets = InvUtil.count(Items.FIREWORK_ROCKET);
         String left = rocketsPerMin > 0.5 ? " ~" + (int) (rockets / rocketsPerMin) + "min" : "";
-        return (returning ? "back to #" : "#") + index + " " + d + "m " + rockets + "r" + left + (effectiveMode() == RocketMode.Saver && saverForced ? " saver" : "");
+        return (returning ? "back to #" : "#") + index + " " + d + "m " + rockets + "r" + left + (effectiveMode() == RocketMode.Saver && saverForced ? " saver" : "")
+            + (chunkPacing.on() && !returning ? " " + (int) pace + "b/s" : "");
     }
-
-    // ------------------------------------------------------------------ lifecycle
 
     @Override
     protected void onEnable() {
@@ -199,6 +178,11 @@ public final class StashFinderBot extends Module {
         rocketCooldown = 0;
         setbackPause = 0;
         viewDistance = measureViewDistance();
+        if (pace <= 0) pace = PACE_START;
+        pace = Math.min(pace, maxSpeed.getD());
+        paceRisk = paceGood = 0;
+        paceAhead = true;
+        chunkLoads = chunkRate = 0;
 
         returning = false;
         finished = false;
@@ -233,6 +217,8 @@ public final class StashFinderBot extends Module {
             ChatUtil.warn("StashFinderBot: you're under the Nether roof. Start on top of the roof (y > 128) or it will fly into the bedrock.");
         ChatUtil.info(String.format(Locale.ROOT, "StashFinderBot: %s, lane %d blocks (view distance %d chunks), %d rockets, waypoint #%d",
             pattern.get(), (int) lane, viewDistance, InvUtil.count(Items.FIREWORK_ROCKET), index));
+        if (Recorder.active()) Recorder.log("STASHBOT", String.format(Locale.ROOT, "start: lane %d, view distance %d, side reach %d, pacing %s from %.1f b/s, max %d",
+            (int) lane, viewDistance, sideReach(), chunkPacing.on() ? "on" : "off", pace, maxSpeed.getI()));
     }
 
     @Override
@@ -259,36 +245,34 @@ public final class StashFinderBot extends Module {
             saveMapFiles(true);
         }
         releaseJump();
-        state = State.TAKEOFF; // on rejoin we'll be falling: reopen the elytra
+        state = State.TAKEOFF;
     }
 
     @EventHandler
     private void onReceive(Events.PacketReceive e) {
-        // setback: give the server a moment before boosting again
         if (e.packet instanceof PlayerPositionLookS2CPacket) setbackPause = 20;
     }
 
-    // ------------------------------------------------------------------ main loop
-
     @EventHandler
     private void onTick(Events.TickPre e) {
-        // free look follows the setting live; starts where you were looking
         if (freeLook.on() && !dev.bali.util.FreeLook.isActive()) dev.bali.util.FreeLook.start(mc.player.getYaw(), mc.player.getPitch());
         else if (!freeLook.on() && dev.bali.util.FreeLook.isActive()) dev.bali.util.FreeLook.stop();
         recordMap(false);
+        if (mc.player.age % 20 == 0) {
+            chunkRate = chunkLoads;
+            chunkLoads = 0;
+        }
         if (rocketCooldown > 0) rocketCooldown--;
         if (setbackPause > 0) setbackPause--;
         if (mc.player.hasVehicle() || mc.player.getAbilities().flying) return;
 
-        // ElytraRecast has a chestplate on for a few ticks: the chest slot is its until it reopens.
-        // Putting the elytra back early means the server never sees the glide stop (durability is lost).
         boolean recasting = Bali.MODULES.get(dev.bali.module.movement.ElytraRecast.class).busy();
         if (!recasting && !wearingElytra()) {
             if (findSpareElytra() == -1) {
                 stop("no usable elytra");
                 return;
             }
-            if (!equipElytra()) return; // waiting a tick for the click to be allowed
+            if (!equipElytra()) return;
         }
         if (mc.player.isGliding() && !recasting) maintainElytra();
 
@@ -311,14 +295,13 @@ public final class StashFinderBot extends Module {
                 return;
             }
             state = State.TAKEOFF;
-            setJump(true); // jump; the elytra opens on the way down
+            setJump(true);
             face(targetYaw(), -10);
             return;
         }
 
-        if (recasting && !mc.player.isGliding()) return; // ElytraRecast reopens it this tick
+        if (recasting && !mc.player.isGliding()) return;
         if (!mc.player.isGliding()) {
-            // airborne, elytra closed: a FRESH jump press opens it (vanilla sends START_FALL_FLYING)
             if (mc.player.getVelocity().y < 0) setJump(!jumpDown);
             else setJump(true);
             return;
@@ -327,7 +310,7 @@ public final class StashFinderBot extends Module {
         releaseJump();
         if (state == State.TAKEOFF) state = State.CRUISE;
         if (state == State.LANDING) {
-            face(mc.player.getYaw(), 18); // shallow glide down, no rockets
+            face(mc.player.getYaw(), 18);
             return;
         }
         cruise();
@@ -350,7 +333,7 @@ public final class StashFinderBot extends Module {
                 return;
             }
         } else if (mc.player.age % 200 == 0) {
-            markPosition(); // a kick or crash resumes from within 10 s of here
+            markPosition();
             saveProgress();
         }
         if (!returning && dist < Math.max(24, speed * 1.5)) {
@@ -361,60 +344,62 @@ public final class StashFinderBot extends Module {
                 index, InvUtil.count(Items.FIREWORK_ROCKET), elytraLeft()));
             return;
         }
+        if (mc.player.age % 5 == 0) updatePace();
+        if (Recorder.active() && mc.player.age % 20 == 0 && searchLeg() != null)
+            Recorder.log("STASHBOT", String.format(Locale.ROOT, "pace %.1f speed %.1f, lane chunks behind %d, path ahead %s, %d chunks/s",
+                pace, speed, paceRisk, paceAhead ? "ok" : "MISSING", chunkRate));
 
         double alt = mc.world.getRegistryKey() == World.NETHER ? netherAltitude.getD() : altitude.getD();
         double err = alt - mc.player.getY();
         double band = band();
-        if (mc.world.getRegistryKey() == World.NETHER) band = Math.min(band, Math.max(0, alt - 135)); // never glide toward the roof
-        boolean lowTerrain = clearanceAhead() < 25; // mountains / roof under the glide path: climb now
+        if (mc.world.getRegistryKey() == World.NETHER) band = Math.min(band, Math.max(0, alt - 135));
+        boolean lowTerrain = clearanceAhead() < 25;
         if (effectiveMode() == RocketMode.Grim) {
             grimCruise(alt, speed, lowTerrain);
             return;
         }
         if (lowTerrain) climbing = true;
         boolean boosting = !mc.world.getEntitiesByClass(FireworkRocketEntity.class, mc.player.getBoundingBox().expand(3), r -> true).isEmpty();
-        if (boosting) climbing = band > 0 && err > 2;   // a boost inside the band climbs all the way back up
+        if (boosting) climbing = band > 0 && err > 2;
         else if (err <= 2) climbing = false;
 
         float pitch;
         if (band > 0 && !climbing && err > -2 && err < band + 12) {
-            // unpowered glide, nose slightly down: trades height for distance instead of rockets
             pitch = (float) glidePitch();
         } else {
-            // altitude hold / climb back to cruise: look up when low, down when high
             pitch = (float) MathHelper.clamp(-err * 1.5 - 2, -40, 25);
         }
+        double cap = speedCap();
+        if (!boosting && speed > cap + 1)
+            pitch = Math.min(pitch, GrimBoost.glidePitch(mc.player.getVelocity(), mc.player.getYaw(), holdSpeed(0, speed / 20, cap / 20)));
         face(targetYaw(), pitch);
 
         if (boosting || rocketCooldown > 0 || setbackPause > 0) return;
-        boolean needAlt = err > band + 12 || lowTerrain;  // below the band, or terrain close below
-        boolean stalling = speed < 8;       // never let it stall, whatever the mode
+        boolean needAlt = err > band + 12 || lowTerrain;
+        boolean stalling = speed < 8;
         boolean wantClimb = climbing && err > 2;
         if (!needAlt && !stalling && !wantClimb) {
-            if (band > 0) return;                        // gliding through the band: no rockets
-            if (speed >= fireSpeed()) return;
+            if (band > 0) return;
+            if (speed >= Math.min(fireSpeed(), cap)) return;
         }
-        if (waitForChunks.on() && !needAlt && !stalling && !chunksAheadLoaded()) return; // let the server catch up first
+        if (waitForChunks.on() && !needAlt && !stalling && !chunksAheadLoaded()) return;
         if (band > 0) climbing = true;
         fireRocket();
     }
 
-    /**
-     * Grim mode. Burn: full accepted speed along our heading while climbing up to Grim Climb above
-     * cruise. No rocket: a level glide that sinks the banked height back off; the next rocket goes
-     * when we are down at cruise altitude and slow.
-     */
     private void grimCruise(double alt, double speed, boolean lowTerrain) {
         double y = mc.player.getY();
         double excess = y - alt;
+        double cap = speedCap() / 20;
         if (GrimBoost.rocketAttached() && setbackPause == 0) {
             double vy = MathHelper.clamp(alt + grimClimb.getD() - y, 0, 1.6);
-            if (excess < 0) vy = Math.max(vy, Math.min(1.6, -excess)); // below cruise: always climb back
-            GrimBoost.request(vy, 3.0);
+            if (excess < 0) vy = Math.max(vy, Math.min(1.6, -excess));
+            GrimBoost.request(vy, Math.min(3.0, cap));
             face(targetYaw(), GrimBoost.burnPitch(vy));
             return;
         }
         double wantVy = excess > 0.5 && !lowTerrain ? -Math.min(0.5, excess / 40) : 0;
+        wantVy = holdSpeed(wantVy, speed / 20, cap);
         face(targetYaw(), GrimBoost.glidePitch(mc.player.getVelocity(), mc.player.getYaw(), wantVy));
 
         if (rocketCooldown > 0 || setbackPause > 0) return;
@@ -425,20 +410,14 @@ public final class StashFinderBot extends Module {
         fireRocket();
     }
 
-    /** True while Grim mode flies the burn itself: the vanilla client-side rocket push must not also apply. */
     public boolean ownsRocketBoost() {
         return isEnabled() && state == State.CRUISE && effectiveMode() == RocketMode.Grim && setbackPause == 0
             && mc.player != null && mc.player.isGliding();
     }
 
-    // ------------------------------------------------------------------ waypoints
-
-    /** Waypoint i as {x, z}, or null once the pattern is complete. */
     private double[] waypoint(int i) {
         switch (pattern.get()) {
             case Spiral -> {
-                // ring k is a square of half-size h around the center, corners E-N -> E-S -> W-S -> W-N;
-                // the W-N corner leads into the next ring's first corner, one lane further out
                 int k = i / 4, c = i % 4;
                 double h = Math.max(minRadius.getD(), lane / 2) + k * lane;
                 if (h > maxRadius.getD()) return null;
@@ -467,12 +446,10 @@ public final class StashFinderBot extends Module {
         }
     }
 
-    /** Where we are flying right now: back to the pause point, or the current waypoint. */
     private double[] target() {
         return returning ? new double[]{resumeX, resumeZ} : waypoint(index);
     }
 
-    /** Remembers our position as the place to resume from; only while actually on the search path. */
     private void markPosition() {
         if (returning || state != State.CRUISE || !mc.player.isGliding()) return;
         resumeX = mc.player.getX();
@@ -482,15 +459,10 @@ public final class StashFinderBot extends Module {
     private static final double RESUME_REACH = 48;
 
     private String eta(double blocks) {
-        int secs = (int) (blocks / (effectiveMode() == RocketMode.Grim ? 38 : 30)); // diagonal legs are the fast ones in Grim mode
+        int secs = (int) (blocks / (effectiveMode() == RocketMode.Grim ? 38 : 30));
         return secs >= 120 ? secs / 60 + " min" : secs + " s";
     }
 
-    /**
-     * Heading for this tick. On a search leg we steer for a point further along the leg's line
-     * rather than straight at its far end, so after a turn or a resume we get back onto the exact
-     * line (flying beside it would leave a strip unsearched).
-     */
     private float targetYaw() {
         double[] wp = target();
         if (wp == null) return mc.player.getYaw();
@@ -502,7 +474,7 @@ public final class StashFinderBot extends Module {
             if (len > 1) {
                 double ux = lx / len, uz = lz / len;
                 double along = (px - from[0]) * ux + (pz - from[1]) * uz;
-                double ahead = Math.max(60, mc.player.getVelocity().horizontalLength() * 60); // 3 s of flight
+                double ahead = Math.max(60, mc.player.getVelocity().horizontalLength() * 60);
                 double t = MathHelper.clamp(along + ahead, 0, len);
                 tx = from[0] + ux * t;
                 tz = from[1] + uz * t;
@@ -511,9 +483,6 @@ public final class StashFinderBot extends Module {
         return (float) Math.toDegrees(Math.atan2(-(tx - px), tz - pz));
     }
 
-    // ------------------------------------------------------------------ flight helpers
-
-    /** Real rotation, turned smoothly (looks like a player steering). */
     private void face(float yaw, float pitch) {
         float t = turnSpeed.getF();
         float cy = mc.player.getYaw();
@@ -531,19 +500,15 @@ public final class StashFinderBot extends Module {
             if (!InvUtil.canClickInventory()) return;
             int inv = InvUtil.findInventory(Items.FIREWORK_ROCKET);
             if (inv == -1) return;
-            if (!InvUtil.invSwap(inv, use)) return; // keys released for the click; fires next tick
+            if (!InvUtil.invSwap(inv, use)) return;
         }
         rocketCooldown = delay();
     }
 
-    // ------------------------------------------------------------------ rocket economy
-
     private RocketMode effectiveMode() {
-        // Grim already uses fewer rockets than Saver, so Auto Saver leaves it alone
         return saverForced && !rocketMode.is(RocketMode.Grim) ? RocketMode.Saver : rocketMode.get();
     }
 
-    /** Boost when slower than this (b/s). */
     private double fireSpeed() {
         return switch (effectiveMode()) {
             case Grim -> 20;
@@ -564,7 +529,6 @@ public final class StashFinderBot extends Module {
         };
     }
 
-    /** How far below cruise altitude it may glide before climbing back. */
     private double band() {
         return switch (effectiveMode()) {
             case Grim, Fast, Balanced -> 0;
@@ -573,12 +537,10 @@ public final class StashFinderBot extends Module {
         };
     }
 
-    /** Measured best: a flat (0 degree) glide keeps ~30 b/s and goes ~300+ blocks per rocket. */
     private double glidePitch() {
         return effectiveMode() == RocketMode.Custom ? glidePitch.getD() : 0;
     }
 
-    /** Blocks between us and the highest ground under the next ~3 seconds of flight path. */
     private double clearanceAhead() {
         var v = mc.player.getVelocity();
         int top = mc.world.getBottomY();
@@ -594,7 +556,7 @@ public final class StashFinderBot extends Module {
         if (lastRocketCount >= 0 && rockets < lastRocketCount) statRockets += lastRocketCount - rockets;
         lastRocketCount = rockets;
         long ticks = mc.player.age - statStartTick;
-        if (ticks >= 1200) { // refreshed every minute, smoothed
+        if (ticks >= 1200) {
             double now = statRockets * 1200.0 / ticks;
             rocketsPerMin = rocketsPerMin <= 0 ? now : rocketsPerMin * 0.5 + now * 0.5;
             statRockets = 0;
@@ -610,7 +572,6 @@ public final class StashFinderBot extends Module {
         return mc.world.getChunkManager().isChunkLoaded(cx, cz);
     }
 
-    /** Radius (in chunks) of loaded chunks around the player in all four directions. */
     private int measureViewDistance() {
         int pcx = mc.player.getChunkPos().x, pcz = mc.player.getChunkPos().z;
         var cm = mc.world.getChunkManager();
@@ -623,12 +584,77 @@ public final class StashFinderBot extends Module {
         return Math.max(2, r);
     }
 
-    /** One pass sees a strip (2 * viewDistance + 1) chunks wide; leave one chunk of overlap. */
     private double autoLane() {
-        return Math.max(32, 2 * viewDistance * 16);
+        return Math.max(32, 2 * (viewDistance - 1) * 16);
     }
 
-    // ------------------------------------------------------------------ elytra management
+    public int sideReach() {
+        return Math.max(1, Math.min(viewDistance - 1, (int) Math.round(lane / 32)));
+    }
+
+    public double pace() { return pace; }
+
+    private double[] searchLeg() {
+        if (returning || state != State.CRUISE || pattern.is(Pattern.Grid) && index == 0) return null;
+        double[] to = waypoint(index);
+        if (to == null) return null;
+        double[] from = index > 0 ? waypoint(index - 1) : new double[]{originX, originZ};
+        double lx = to[0] - from[0], lz = to[1] - from[1], len = Math.hypot(lx, lz);
+        return len < 16 ? null : new double[]{from[0], from[1], lx / len, lz / len, len};
+    }
+
+    private double speedCap() {
+        if (searchLeg() == null) return Double.POSITIVE_INFINITY;
+        double cap = maxSpeed.getD() >= 60 ? Double.POSITIVE_INFINITY : maxSpeed.getD();
+        return chunkPacing.on() ? Math.min(cap, pace) : cap;
+    }
+
+    private static double holdSpeed(double wantVy, double speed, double cap) {
+        if (Double.isInfinite(cap)) return wantVy;
+        double over = speed - cap;
+        return over > 0 ? Math.min(0.4, 2 * over) : Math.max(wantVy, 2 * over);
+    }
+
+    private void updatePace() {
+        double[] leg = searchLeg();
+        if (leg == null) return;
+        double fx = leg[0], fz = leg[1], ux = leg[2], uz = leg[3], len = leg[4];
+        double px = mc.player.getX(), pz = mc.player.getZ();
+        double along = (px - fx) * ux + (pz - fz) * uz;
+        double side = sideReach() * 16 + 7.99;
+        int r = viewDistance;
+        int pcx = MathHelper.floor(px) >> 4, pcz = MathHelper.floor(pz) >> 4;
+        var cm = mc.world.getChunkManager();
+        int risk = 0;
+        for (int dx = -r; dx <= r; dx++)
+            for (int dz = -r; dz <= r; dz++) {
+                if (dx * dx + dz * dz > r * r) continue;
+                double cx = ((pcx + dx) << 4) + 8 - fx, cz = ((pcz + dz) << 4) + 8 - fz;
+                double a = cx * ux + cz * uz;
+                if (a > along + 24 || a < 0 || a > len + 8) continue;
+                if (Math.abs(cz * ux - cx * uz) > side) continue;
+                if (!cm.isChunkLoaded(pcx + dx, pcz + dz)) risk++;
+            }
+        boolean ahead = loadedAt(px + ux * 20, pz + uz * 20) && loadedAt(px + ux * 36, pz + uz * 36);
+        if (chunkPacing.on()) {
+            if (!ahead) {
+                pace -= 2;
+                paceGood = 0;
+            } else if (risk > 0) {
+                if (risk >= paceRisk - 1) pace -= 0.5 + 0.02 * risk;
+                paceGood = 0;
+            } else if ((paceGood += 5) >= 20) {
+                pace += 0.07;
+            }
+            pace = MathHelper.clamp(pace, PACE_MIN, Math.max(PACE_MIN, maxSpeed.getD()));
+        }
+        paceRisk = risk;
+        paceAhead = ahead;
+    }
+
+    private boolean loadedAt(double x, double z) {
+        return mc.world.getChunkManager().isChunkLoaded(MathHelper.floor(x) >> 4, MathHelper.floor(z) >> 4);
+    }
 
     private static boolean usable(ItemStack s, int minLeft) {
         return s.contains(DataComponentTypes.GLIDER) && s.getMaxDamage() - s.getDamage() > minLeft;
@@ -643,7 +669,6 @@ public final class StashFinderBot extends Module {
         return s.getMaxDamage() - s.getDamage();
     }
 
-    /** Best spare elytra in the inventory (most durability), or -1. */
     private int findSpareElytra() {
         int best = -1, bestLeft = swapAt.getI();
         for (int i = 0; i < 36; i++) {
@@ -655,21 +680,20 @@ public final class StashFinderBot extends Module {
         return best;
     }
 
-    /** Puts the best spare elytra in the chest slot with SWAP clicks (all in one tick, flight continues). */
     private boolean equipElytra() {
         if (!InvUtil.canClickInventory()) return false;
         int slot = findSpareElytra();
         if (slot == -1) return false;
-        if (!dev.bali.util.ClickGate.tryClick()) return false; // keys released (no effect while gliding); swap next tick
+        if (!dev.bali.util.ClickGate.tryClick()) return false;
         int chest = 6;
         if (slot < 9) {
             InvUtil.swapClick(chest, slot);
         } else {
             int sel = InvUtil.selected();
             int screen = InvUtil.toScreenSlot(slot);
-            InvUtil.swapClick(screen, sel);  // spare elytra -> selected hotbar slot
-            InvUtil.swapClick(chest, sel);   // -> chest; worn one comes back to the hotbar
-            InvUtil.swapClick(screen, sel);  // worn one -> where the spare was, hotbar item restored
+            InvUtil.swapClick(screen, sel);
+            InvUtil.swapClick(chest, sel);
+            InvUtil.swapClick(screen, sel);
         }
         ChatUtil.info("StashFinderBot: equipped a fresh elytra (" + elytraLeft() + " durability)");
         return wearingElytra();
@@ -687,8 +711,6 @@ public final class StashFinderBot extends Module {
         }
         if (elytraLeft() <= 6 && state != State.LANDING) land("elytra about to break");
     }
-
-    // ------------------------------------------------------------------ ending
 
     private void land(String why) {
         if (state == State.LANDING) return;
@@ -713,8 +735,6 @@ public final class StashFinderBot extends Module {
         setEnabled(false);
     }
 
-    // ------------------------------------------------------------------ input
-
     private void setJump(boolean down) {
         mc.options.jumpKey.setPressed(down);
         jumpDown = down;
@@ -727,8 +747,6 @@ public final class StashFinderBot extends Module {
         jumpDown = false;
         if (mc.options != null) mc.options.jumpKey.setPressed(false);
     }
-
-    // ------------------------------------------------------------------ map
 
     private String serverKey() {
         String server = mc.getCurrentServerEntry() != null ? mc.getCurrentServerEntry().address : "singleplayer";
@@ -743,7 +761,6 @@ public final class StashFinderBot extends Module {
         return mc.world != null && m.server.equals(serverKey()) && m.dimension.equals(mc.world.getRegistryKey().getValue().getPath());
     }
 
-    /** Continues the saved map with this name (a resumed search), or starts a new one. */
     private void openMap(String name) {
         String server = serverKey(), dim = mc.world.getRegistryKey().getValue().getPath();
         if (name != null) {
@@ -776,7 +793,6 @@ public final class StashFinderBot extends Module {
             }
     }
 
-    /** Path point every tick; NewChunks verdicts twice a second, StashFinder's stashes once a second; autosave. */
     private void recordMap(boolean now) {
         if (map == null || mc.player == null || !mapMatchesWorld(map)) return;
         map.addPathPoint(mc.player.getX(), mc.player.getZ());
@@ -796,10 +812,9 @@ public final class StashFinderBot extends Module {
             }
         }
         if (now || age % 20 == 0) syncStashes();
-        if (!now && saveMap.on() && age % 2400 == 0) saveMapFiles(age % 12000 == 0); // data every 2 min, picture every 10
+        if (!now && saveMap.on() && age % 2400 == 0) saveMapFiles(age % 12000 == 0);
     }
 
-    /** Puts every stash StashFinder knows on the map, if this map has seen its chunk. */
     private void syncStashes() {
         StashFinder sf = Bali.MODULES.get(StashFinder.class);
         if (!sf.isEnabled()) return;
@@ -809,7 +824,6 @@ public final class StashFinderBot extends Module {
         }
     }
 
-    /** Writes the map data (and the picture + stash list) on a background thread. */
     private void saveMapFiles(boolean picture) {
         StashMap m = map;
         if (m == null || !saveMap.on()) return;
@@ -827,16 +841,11 @@ public final class StashFinderBot extends Module {
         });
     }
 
-    /** Folder the maps of this server/dimension are saved in. */
     public Path mapFolder() {
         if (mc.world == null) return mc.runDirectory.toPath().resolve("bali").resolve("stashmaps");
         return mapDir(serverKey(), mc.world.getRegistryKey().getValue().getPath());
     }
 
-    /**
-     * The map to show: the one being flown, or (bot off) the newest one saved for this server and
-     * dimension, so a finished search can still be looked at in the ClickGUI.
-     */
     public StashMap viewMap() {
         if (mc.world == null) return map;
         if (map != null && mapMatchesWorld(map)) return map;
@@ -851,19 +860,16 @@ public final class StashFinderBot extends Module {
         return map != null && mapMatchesWorld(map) ? map : null;
     }
 
-    /** {x, z, yaw} of the player if they are in the map's world. */
     public double[] playerOnMap(StashMap m) {
         if (mc.player == null || m == null || !mapMatchesWorld(m)) return null;
         return new double[]{mc.player.getX(), mc.player.getZ(), mc.player.getYaw()};
     }
 
-    /** Where the bot is flying right now, or null. */
     public double[] currentTarget() {
         if (!isEnabled() || mc.player == null || state == State.LANDING) return null;
         return target();
     }
 
-    /** The bot's next waypoints (the pause point first while flying back): about two spiral rings. */
     public List<double[]> predictedPath() {
         List<double[]> out = new ArrayList<>();
         if (!isEnabled() || state == State.LANDING) return out;
@@ -888,7 +894,6 @@ public final class StashFinderBot extends Module {
         dev.bali.gui.StashMapWidget.INSTANCE.draw(e.context, 4, 14, minimapSize.getI(), -1, -1, false);
     }
 
-    /** .stashmap [save]: save a picture now, or open the folder. */
     public void mapCommand(String[] a) {
         if (a.length > 0 && a[0].equalsIgnoreCase("save")) {
             StashMap m = viewMap();
@@ -908,8 +913,6 @@ public final class StashFinderBot extends Module {
         net.minecraft.util.Util.getOperatingSystem().open(dir);
         ChatUtil.info("Stash maps: " + dir);
     }
-
-    // ------------------------------------------------------------------ progress file
 
     private Path progressFile() {
         String server = mc.getCurrentServerEntry() != null ? mc.getCurrentServerEntry().address : "singleplayer";
@@ -932,7 +935,7 @@ public final class StashFinderBot extends Module {
         try {
             Properties p = new Properties();
             p.load(Files.newBufferedReader(f, StandardCharsets.UTF_8));
-            if (!signature().equals(p.getProperty("pattern"))) return false; // settings changed: new search
+            if (!signature().equals(p.getProperty("pattern"))) return false;
             index = Integer.parseInt(p.getProperty("index"));
             originX = Double.parseDouble(p.getProperty("originX"));
             originZ = Double.parseDouble(p.getProperty("originZ"));

@@ -56,21 +56,6 @@ import java.util.concurrent.Executors;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/**
- * Flags chunks that contain player-made builds while you travel: every loaded chunk is scanned on a
- * background thread over its full height (bedrock to build limit), each kind of player block adds to
- * a score, and chunks over the threshold raise an on-screen alert, a chat message with coordinates,
- * a waypoint, and a line in .minecraft/bali/stashes/<server>/<dimension>.txt.
- *
- * Natural structures (villages, dungeons, strongholds, bastions, end cities, trial chambers...) also
- * contain chests, beds and furnaces, so in a chunk with a structure marker block those only count
- * when they can't be natural (shulkers, beacons, concrete, sky builds...).
- *
- * "Sky builds": nothing generates near the build limit (Overworld y >= Sky Y, the Nether above the
- * bedrock roof, the End above y 220), so any block up there was placed by a player.
- *
- * Only reads chunk data the server already sends; nothing is sent, so no anticheat exposure.
- */
 public final class StashFinder extends Module {
     private final NumberSetting threshold = number("Threshold", 5, 1, 40, 0.5, "Score a chunk needs to be flagged (1 shulker = 5)");
     private final BoolSetting skyBuilds = bool("Sky Builds", true, "Count any block near the build limit / on the Nether roof");
@@ -88,9 +73,6 @@ public final class StashFinder extends Module {
     private final ColorSetting color = color("Color", 0xFFFF40C0, "Waypoint color");
     private final BoolSetting save = bool("Save", true, "Log finds per server/dimension (never re-alert a saved stash)");
 
-    // ------------------------------------------------------------------ signals
-
-    /** natural = can generate in structures, so it is ignored in chunks with a structure marker. */
     enum Signal {
         SHULKER("shulker", 5, 20, false),
         BEACON("beacon", 5, 3, false),
@@ -161,14 +143,10 @@ public final class StashFinder extends Module {
         SIGNALS = m;
     }
 
-    // ------------------------------------------------------------------ state
-
-    /** Result of scanning one chunk (built off-thread). */
     private record ChunkResult(long key, EnumMap<Signal, Integer> counts, double score, BlockPos best, boolean structure) {}
 
-    /** A found stash: one or more neighbouring flagged chunks. */
     private static final class Stash {
-        long id; // first chunk: stays the same while neighbouring chunks merge in
+        long id;
         boolean structure;
         BlockPos pos;
         double bestWeight;
@@ -179,7 +157,7 @@ public final class StashFinder extends Module {
 
         String summary() {
             List<Map.Entry<Signal, Integer>> e = new ArrayList<>(counts.entrySet());
-            e.sort((a, b) -> Double.compare(b.getKey().weight, a.getKey().weight)); // most telling first: shulkers, beacons...
+            e.sort((a, b) -> Double.compare(b.getKey().weight, a.getKey().weight));
             StringBuilder sb = new StringBuilder();
             for (int i = 0; i < e.size() && i < 4; i++) {
                 if (i > 0) sb.append(", ");
@@ -188,7 +166,6 @@ public final class StashFinder extends Module {
             return sb.toString();
         }
 
-        /** Why this was flagged: every signal with its share of the score, most telling first. */
         List<String> details(double threshold) {
             List<String> l = new ArrayList<>();
             l.add(Formatting.YELLOW + "Score " + String.format(Locale.ROOT, "%.1f", score) + Formatting.GRAY
@@ -210,10 +187,8 @@ public final class StashFinder extends Module {
         }
     }
 
-    /** A found stash as other modules see it (StashFinderBot's map). */
     public record StashInfo(long id, BlockPos pos, double score, List<String> details) {}
 
-    /** All stashes known in this dimension, with the reasons they were flagged. */
     public List<StashInfo> snapshot() {
         List<StashInfo> out = new ArrayList<>();
         double th = threshold.getD();
@@ -236,7 +211,6 @@ public final class StashFinder extends Module {
     private String loadedKey;
     private int foundThisSession;
 
-    // banner
     private Stash bannerStash;
     private long bannerStart;
     private static final long BANNER_MS = 8000;
@@ -289,8 +263,6 @@ public final class StashFinder extends Module {
             }
     }
 
-    // ------------------------------------------------------------------ scanning
-
     private void queueScan(WorldChunk chunk) {
         if (mc.world == null) return;
         ChunkPos cp = chunk.getPos();
@@ -306,7 +278,7 @@ public final class StashFinder extends Module {
                 ChunkResult res = scan(chunk, sky);
                 if (res != null) results.add(res);
             } catch (Throwable t) {
-                Bali.LOG.debug("StashFinder scan failed", t); // chunk unloaded/changed mid-scan, harmless
+                Bali.LOG.debug("StashFinder scan failed", t);
             }
         });
     }
@@ -337,7 +309,7 @@ public final class StashFinder extends Module {
                         if (structure.contains(b)) isStructure = true;
                         Signal sig = signals.get(b);
                         if (sig == null && sky) sig = Signal.SKY;
-                        else if (sky) counts.merge(Signal.SKY, 1, Integer::sum); // e.g. a shulker at the limit counts as both
+                        else if (sky) counts.merge(Signal.SKY, 1, Integer::sum);
                         if (sig == null) continue;
                         counts.merge(sig, 1, Integer::sum);
                         if (sig.weight > bestW) {
@@ -360,7 +332,6 @@ public final class StashFinder extends Module {
 
     @EventHandler
     private void onReceive(Events.PacketReceive e) {
-        // someone placing storage while we watch, or anti-xray revealing hidden chests: rescan that chunk
         if (e.packet instanceof BlockUpdateS2CPacket p) blockChanged(p.getPos(), p.getState());
         else if (e.packet instanceof ChunkDeltaUpdateS2CPacket p) p.visitUpdates(this::blockChanged);
     }
@@ -370,8 +341,6 @@ public final class StashFinder extends Module {
         if (signals == null || !signals.containsKey(state.getBlock())) return;
         dirty.add(ChunkPos.toLong(pos.getX() >> 4, pos.getZ() >> 4));
     }
-
-    // ------------------------------------------------------------------ results (main thread)
 
     @EventHandler
     private void onTick(Events.TickPost e) {
@@ -405,7 +374,6 @@ public final class StashFinder extends Module {
             }
         }
         if (near != null) {
-            // part of a stash we already know about: merge silently (rescans replace the chunk's numbers)
             near.structure |= r.structure();
             if (near.chunks.add(r.key()) || r.score() > near.score) {
                 for (var e : r.counts().entrySet()) near.counts.merge(e.getKey(), e.getValue(), Math::max);
@@ -456,8 +424,6 @@ public final class StashFinder extends Module {
         if (dev.bali.module.client.Recorder.active())
             dev.bali.module.client.Recorder.log("STASH", s.pos.toShortString() + " score=" + String.format(Locale.ROOT, "%.1f", s.score) + " " + s.summary());
     }
-
-    // ------------------------------------------------------------------ render
 
     @EventHandler
     private void onRender2D(Events.Render2D e) {
@@ -514,9 +480,6 @@ public final class StashFinder extends Module {
         }
     }
 
-    // ------------------------------------------------------------------ commands / persistence
-
-    /** .stashes [clear] */
     public void command(String[] a) {
         if (nullCheck()) return;
         if (a.length > 0 && a[0].equalsIgnoreCase("clear")) {
@@ -572,7 +535,7 @@ public final class StashFinder extends Module {
                 s.time = m.group(1);
                 s.pos = new BlockPos(Integer.parseInt(m.group(2)), Integer.parseInt(m.group(3)), Integer.parseInt(m.group(4)));
                 s.score = Double.parseDouble(m.group(5));
-                s.bestWeight = 99; // keep the saved position
+                s.bestWeight = 99;
                 for (String part : m.group(6).split(", ")) {
                     String[] p = part.split(" ", 2);
                     if (p.length != 2) continue;

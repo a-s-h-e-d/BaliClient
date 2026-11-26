@@ -9,11 +9,6 @@ import dev.bali.setting.NumberSetting;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
 
-/**
- * Client-side camera detach. The real player keeps standing still: its movement input is zeroed and
- * mouse look goes to the camera instead, so nothing unusual is sent to the server (Grim-safe).
- * WASD moves the camera, jump/sneak go up/down, sprint for double speed.
- */
 public final class Freecam extends Module {
     private final NumberSetting speed = number("Speed", 1.0, 0.1, 5.0, 0.1, "Blocks per tick");
 
@@ -24,7 +19,6 @@ public final class Freecam extends Module {
         super("Freecam", "Fly the camera around; your player stays put", Category.RENDER);
     }
 
-    /** Read by the camera/input mixins. */
     public static Freecam active() {
         if (Bali.MODULES == null) return null;
         Freecam f = Bali.MODULES.get(Freecam.class);
@@ -43,7 +37,6 @@ public final class Freecam extends Module {
         z = prevZ = eye.z;
         yaw = prevYaw = mc.player.getYaw();
         pitch = prevPitch = mc.player.getPitch();
-        // drop any held movement so the player doesn't keep walking
         mc.player.input.playerInput = net.minecraft.util.PlayerInput.DEFAULT;
     }
 

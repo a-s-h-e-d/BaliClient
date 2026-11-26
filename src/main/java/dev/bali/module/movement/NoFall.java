@@ -16,11 +16,6 @@ import net.minecraft.util.hit.HitResult;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.RaycastContext;
 
-/**
- * Packet: spoofs onGround while falling. Grim's NoFall check catches this and applies the damage
- *   anyway, so only for non-Grim servers.
- * Bucket: looks down and places water just before landing (legit "MLG"), safe on Grim.
- */
 public final class NoFall extends Module {
     public enum Mode { Bucket, Packet }
 
@@ -45,10 +40,9 @@ public final class NoFall extends Module {
             return;
         }
 
-        if (mc.world.getRegistryKey() == net.minecraft.world.World.NETHER) return; // water evaporates in the nether
+        if (mc.world.getRegistryKey() == net.minecraft.world.World.NETHER) return;
         int slot = InvUtil.findHotbar(Items.WATER_BUCKET);
         if (slot == -1) return;
-        // place when the ground is within reach of the next couple of ticks
         Vec3d pos = mc.player.getEntityPos();
         double lookAhead = Math.max(2.0, -mc.player.getVelocity().y * 2.5);
         var hit = mc.world.raycast(new RaycastContext(pos, pos.add(0, -lookAhead, 0), RaycastContext.ShapeType.COLLIDER, RaycastContext.FluidHandling.ANY, mc.player));

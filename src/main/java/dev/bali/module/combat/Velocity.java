@@ -18,12 +18,6 @@ import net.minecraft.util.math.Vec3d;
 
 import java.util.Optional;
 
-/**
- * Cancel/Reduce: plain knockback removal (Grim will set you back).
- * Wall: only removes knockback while you are inside a block (burrowed/phased), where Grim
- *   can't predict collisions well - the commonly used crystal PvP mode.
- * Grim: old bypass (cancel + position + STOP_DESTROY_BLOCK). May be patched; test it.
- */
 public final class Velocity extends Module {
     public enum Mode { Cancel, Reduce, Wall, Grim }
 

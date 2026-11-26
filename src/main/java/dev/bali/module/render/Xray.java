@@ -12,13 +12,7 @@ import net.minecraft.block.Blocks;
 import java.util.List;
 import java.util.Set;
 
-/**
- * Only the listed blocks are meshed; everything else is skipped, cave culling is disabled so hidden
- * sections still render, and listed blocks are drawn on every side at full brightness.
- * Chunk meshing runs on worker threads, so the mixins read the immutable {@link #ACTIVE} snapshot.
- */
 public final class Xray extends Module {
-    /** Blocks to render while Xray is on, or null when off. Read from chunk builder threads. */
     public static volatile Set<Block> ACTIVE;
     public static volatile boolean SHOW_FLUIDS;
 
@@ -49,7 +43,6 @@ public final class Xray extends Module {
         reloadChunks();
     }
 
-    /** Re-mesh when the block list or fluid option changes while enabled. */
     @EventHandler
     private void onTick(Events.TickPost e) {
         if (blocks.version() != appliedVersion || fluids.on() != appliedFluids) apply();

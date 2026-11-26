@@ -19,7 +19,6 @@ public class NumberSetting extends Setting<Double> {
     public void set(Double v) {
         double clamped = Math.max(min, Math.min(max, v));
         if (step > 0) clamped = Math.round(clamped / step) * step;
-        // kill floating point noise like 0.30000000000000004
         this.value = Math.round(clamped * 10000.0) / 10000.0;
     }
 

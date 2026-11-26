@@ -20,7 +20,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-/** Saves everything to .minecraft/bali/. Profiles live in bali/configs/<name>.json. */
 public final class ConfigManager {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private final Path dir = MinecraftClient.getInstance().runDirectory.toPath().resolve("bali");

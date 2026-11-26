@@ -10,7 +10,6 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import java.util.Optional;
 
-/** Gives container items (shulkers) a grid tooltip; the grid itself is drawn by ShulkerViewer. */
 @Mixin(ItemStack.class)
 public abstract class ShulkerViewerMixins {
     @Inject(method = "getTooltipData", at = @At("HEAD"), cancellable = true)

@@ -9,7 +9,6 @@ import org.spongepowered.asm.mixin.injection.At;
 
 @Mixin(LightmapTextureManager.class)
 public abstract class RenderTweaksMixins {
-    /** Second Double.floatValue() in update() is the gamma option. */
     @ModifyExpressionValue(method = "update", at = @At(value = "INVOKE", target = "Ljava/lang/Double;floatValue()F", ordinal = 1))
     private float bali$gamma(float original) {
         Fullbright fb = Bali.MODULES.get(Fullbright.class);

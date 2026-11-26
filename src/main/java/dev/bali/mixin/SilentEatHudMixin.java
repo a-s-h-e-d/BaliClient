@@ -8,7 +8,6 @@ import net.minecraft.item.ItemStack;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 
-/** AutoEat Silent: the hotbar highlight and the held-item name keep showing the slot you had before eating. */
 @Mixin(InGameHud.class)
 public abstract class SilentEatHudMixin {
     @ModifyExpressionValue(method = "renderHotbar", at = @At(value = "INVOKE", target = "Lnet/minecraft/entity/player/PlayerInventory;getSelectedSlot()I"))

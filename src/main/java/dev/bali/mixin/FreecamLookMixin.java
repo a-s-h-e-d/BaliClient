@@ -8,7 +8,6 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-/** Mouse look turns the freecam, not the player (so the server never sees you turn). */
 @Mixin(Entity.class)
 public abstract class FreecamLookMixin {
     @Inject(method = "changeLookDirection", at = @At("HEAD"), cancellable = true)
@@ -24,7 +23,6 @@ public abstract class FreecamLookMixin {
         }
     }
 
-    /** YawLock: the mouse only moves your pitch (freecam and free look keep full control). */
     @org.spongepowered.asm.mixin.injection.ModifyVariable(method = "changeLookDirection", at = @At("HEAD"), argsOnly = true, ordinal = 0)
     private double bali$yawLock(double dx) {
         if (!((Object) this instanceof ClientPlayerEntity) || Freecam.active() != null || dev.bali.util.FreeLook.isActive()) return dx;

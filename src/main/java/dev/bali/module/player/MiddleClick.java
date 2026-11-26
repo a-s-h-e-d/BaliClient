@@ -17,7 +17,6 @@ import net.minecraft.util.hit.EntityHitResult;
 import net.minecraft.util.hit.HitResult;
 import org.lwjgl.glfw.GLFW;
 
-/** Middle click: friend the player you're looking at, otherwise throw a pearl (or other item). */
 public final class MiddleClick extends Module {
     public enum Action { Pearl, Rocket, Exp }
 
@@ -25,7 +24,6 @@ public final class MiddleClick extends Module {
     private final BoolSetting friends = bool("Friends", true, "Middle click a player to add/remove friend");
     private final BoolSetting inventory = bool("Inventory", true, "Also use items from the main inventory");
 
-    /** Item from the main inventory waiting for a clean input to be used (see InvUtil.invSwap). */
     private Item pendingItem;
     private int pendingTicks;
 
@@ -87,7 +85,6 @@ public final class MiddleClick extends Module {
         } else if (inventory.on() && InvUtil.canClickInventory()) {
             int inv = InvUtil.findInventory(item);
             if (inv != -1) {
-                // false: Grim would cancel the click while moving; keys go up for a tick and it's retried
                 if (!InvUtil.invSwap(inv, use)) {
                     pendingItem = item;
                     pendingTicks = 3;

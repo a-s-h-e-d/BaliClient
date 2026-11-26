@@ -12,7 +12,6 @@ import org.spongepowered.asm.mixin.injection.At;
 
 @Mixin(WorldRenderer.class)
 public abstract class XrayLightMixin {
-    /** Listed blocks are lit at full brightness even deep underground. */
     @WrapOperation(method = "getLightmapCoordinates(Lnet/minecraft/client/render/WorldRenderer$BrightnessGetter;Lnet/minecraft/world/BlockRenderView;Lnet/minecraft/block/BlockState;Lnet/minecraft/util/math/BlockPos;)I",
         at = @At(value = "INVOKE", target = "Lnet/minecraft/block/BlockState;hasEmissiveLighting(Lnet/minecraft/world/BlockView;Lnet/minecraft/util/math/BlockPos;)Z"))
     private static boolean bali$fullBright(BlockState state, BlockView world, BlockPos pos, Operation<Boolean> original) {

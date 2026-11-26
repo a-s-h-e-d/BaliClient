@@ -9,10 +9,6 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-/**
- * Face culling for Xray. Hooked on Block.shouldDrawSide itself because both the vanilla model
- * renderer and Fabric's Indigo renderer (which replaces vanilla terrain meshing) call it.
- */
 @Mixin(Block.class)
 public abstract class XrayModelMixin {
     @Inject(method = "shouldDrawSide", at = @At("HEAD"), cancellable = true)

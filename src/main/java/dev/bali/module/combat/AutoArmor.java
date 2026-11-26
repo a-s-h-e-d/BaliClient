@@ -39,17 +39,11 @@ public final class AutoArmor extends Module {
         if (pauseMoving.on() && mc.player.getVelocity().horizontalLengthSquared() > 1e-4) return;
 
         for (EquipmentSlot slot : SLOTS) {
-            // ElytraMace swaps chestplate and elytra itself
             if (slot == EquipmentSlot.CHEST && dev.bali.Bali.MODULES.get(ElytraMace.class).ownsChestSlot()) continue;
             if (slot == EquipmentSlot.CHEST && dev.bali.Bali.MODULES.get(dev.bali.module.movement.ElytraRecast.class).busy()) continue;
             ItemStack current = mc.player.getEquippedStack(slot);
             if (DamageUtil.enchantLevel(current, Enchantments.BINDING_CURSE) > 0) continue;
-            // never pull the elytra off mid-flight
             if (slot == EquipmentSlot.CHEST && mc.player.isGliding() && current.contains(DataComponentTypes.GLIDER)) continue;
-            // Only a real upgrade (armor, toughness, enchants) or a worn-out piece is worth a swap.
-            // Durability alone must not decide it: explosions wear the worn piece, which made an
-            // identical spare look better every hit and swapped back and forth until kicked.
-            // best spare: highest score, the freshest one among equal scores
             int bestIdx = -1;
             double bestScore = 0, bestLeft = 0;
             for (int i = 0; i < 36; i++) {
@@ -70,7 +64,7 @@ public final class AutoArmor extends Module {
                     && bestScore > currentScore - EPS && bestLeft >= FRESH;
             if (!upgrade && !replaceWorn) continue;
 
-            if (!dev.bali.util.ClickGate.tryClick()) return; // keys released; equip next tick
+            if (!dev.bali.util.ClickGate.tryClick()) return;
             int from = InvUtil.toScreenSlot(bestIdx);
             int armorScreenSlot = 8 - slot.getEntitySlotId();
             if (current.isEmpty()) {
@@ -81,7 +75,7 @@ public final class AutoArmor extends Module {
                 InvUtil.pickup(from);
             }
             timer = delay.getI();
-            return; // one piece per tick
+            return;
         }
     }
 
@@ -105,7 +99,6 @@ public final class AutoArmor extends Module {
         return score;
     }
 
-    /** Swap out a piece once it is below this much durability left, for one above {@link #FRESH}. */
     private static final double WORN = 0.1, FRESH = 0.3, EPS = 0.01;
 
     private static double remaining(ItemStack s) {

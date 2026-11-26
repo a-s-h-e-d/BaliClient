@@ -16,6 +16,7 @@ import dev.bali.util.InvUtil;
 import net.minecraft.component.DataComponentTypes;
 import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.item.Items;
+import net.minecraft.network.packet.c2s.play.ClientCommandC2SPacket;
 import net.minecraft.network.packet.s2c.play.PlayerPositionLookS2CPacket;
 import net.minecraft.util.Hand;
 import net.minecraft.util.math.MathHelper;
@@ -23,35 +24,8 @@ import net.minecraft.util.math.Vec3d;
 
 import java.util.Locale;
 
-/**
- * Bounce: the 2b2t highway method. Jump is held to re-jump on landing; in the air the elytra is
- *   opened by releasing and re-pressing jump so vanilla sends START_FALL_FLYING itself. Sending it
- *   without a fresh jump press got rejected by Grim every time (2b2t recording, 156/156 setbacks).
- *   Only sprints on the ground. Hold W, use AutoWalk, or turn on Auto Forward.
- *
- *   Bounce speed comes from the sprint jump (+0.2 b/t) and is lost to drag: 1% per gliding tick
- *   and 9% in the one tick after each jump where the elytra is closed (the server closes it on
- *   landing; reopening needs a released then a pressed jump). A 2b2t recording settled at 22.6 b/s,
- *   exactly what that cycle gives at a flat pitch of 80. Two Phase pitches 89 while rising (the
- *   hop stays low and short) and 30 while falling (the drop is turned into forward speed):
- *   27.6 b/s in a simulation of the vanilla physics, 12-tick hops, under 1 block high.
- * Boost: rocket flight tuned to what Grim's simulation accepts (see {@link GrimBoost}).
- *   While a rocket is attached Grim does not simulate the boost; it accepts any velocity between
- *   the plain glide result and a per-axis box of 1.7 b/t in the look direction. So during a burn
- *   we take the box corner along our heading (34 b/s on an axis, 48 b/s on a diagonal, instantly)
- *   and can climb at up to 1.7 b/t at almost no cost in speed. Between rockets it is ordinary
- *   elytra physics: a silent pitch holds altitude and spends the banked height, and the next
- *   rocket fires when we are back at cruise height and slow.
- * Pitch40: rocket-free cruising between two heights, with a silent pitch. Dive at +40 from the top
- *   bound to the bottom one, then climb at -40: vanilla's climb turns horizontal speed into 3.2x as
- *   much lift, so a cycle at least ~40 blocks tall climbs back to the top on its own. Simulated with
- *   vanilla's glide physics: 26-28 b/s indefinitely without a rocket (20-block bounds decay).
- *   The bounds are synced to your height when the glide starts and re-armed after setbacks or if
- *   a climb stalls short of the top. A rocket is only fired at such a stall, the slowest point of
- *   the cycle, where Grim's firework box adds the most speed, and the burn climbs back to the top.
- */
 public final class ElytraFly extends Module {
-    public enum Mode { Bounce, Boost, Pitch40 }
+    public enum Mode { Bounce, Boost, Pitch40, Packet }
 
     private final EnumSetting<Mode> mode = mode("Mode", Mode.Bounce, "Flight mode");
     public enum PitchLock { Silent, Client, Off }
@@ -80,6 +54,9 @@ public final class ElytraFly extends Module {
     private final NumberSetting rocketClimb = number("Rocket Climb", 32, 0, 32, 1, "Climb this fast (blocks/s) during a burn, then glide the height off: far fewer rockets. 0 = stay level").visibleWhen(() -> !is(Mode.Bounce) && grimBoost.on());
     private final NumberSetting ceiling = number("Ceiling", 250, 0, 600, 5, "Rocket Climb (and the Pitch40 top bound) stops at this Y (118 under the nether roof)").visibleWhen(() -> !is(Mode.Bounce) && grimBoost.on());
     private final BoolSetting levelGlide = bool("Level Glide", true, "Between rockets a silent pitch holds your altitude; off = your camera pitch flies").visibleWhen(() -> is(Mode.Boost));
+    private final NumberSetting packetSpeed = number("Speed", 40, 1, 100, 1, "Horizontal speed in blocks/s (Packet; not Grim-safe)").visibleWhen(() -> is(Mode.Packet));
+    private final NumberSetting packetVertical = number("Vertical Speed", 20, 1, 60, 1, "Up (jump) and down (sneak) speed in blocks/s (Packet)").visibleWhen(() -> is(Mode.Packet));
+    private final NumberSetting packetFall = number("Fall Speed", 0, 0, 5, 0.1, "Sink this fast in blocks/s when not pressing jump or sneak; 0 = hover (Packet)").visibleWhen(() -> is(Mode.Packet));
 
     private int rocketTimer;
     private boolean holdingJump;
@@ -87,17 +64,13 @@ public final class ElytraFly extends Module {
     private int restartTimer;
     private boolean lastGround, lastGlide;
 
-    // Boost state
     private double cruiseY = Double.NaN;
     private volatile int setbackPause;
 
-    // Pitch40 state
-    /** Current top bound, and the height it was armed at (a stall rocket climbs back there). */
     private double p40Top = Double.NaN, p40Home;
     private boolean p40Diving, p40Rose, p40Kickstart;
     private float p40Pitch;
     private int p40Stalls, p40StallRockets;
-    /** Last silent rotation we sent while gliding; held through an ElytraRecast reopen tick. */
     private float lastFaceYaw, lastFacePitch = Float.NaN;
 
     public ElytraFly() {
@@ -112,7 +85,6 @@ public final class ElytraFly extends Module {
         return mode.get().name();
     }
 
-    /** Pitch while on the ground or rising with Two Phase. Not 90: vanilla's cosine table can make the look's horizontal part point backwards there. */
     private static final float RISE_PITCH = 89f;
 
     @Override
@@ -123,6 +95,8 @@ public final class ElytraFly extends Module {
         cruiseY = Double.NaN;
         p40Top = Double.NaN;
         lastFacePitch = Float.NaN;
+        packetMove = null;
+        packetOpenWait = 0;
     }
 
     @Override
@@ -131,7 +105,6 @@ public final class ElytraFly extends Module {
     }
 
     private boolean wearingElytra() {
-        // ElytraRecast has the chestplate on for a moment; the client is still gliding
         if (Bali.MODULES.get(ElytraRecast.class).busy()) return true;
         var chest = mc.player.getEquippedStack(EquipmentSlot.CHEST);
         return chest.contains(DataComponentTypes.GLIDER) && chest.getDamage() < chest.getMaxDamage() - 1;
@@ -139,6 +112,7 @@ public final class ElytraFly extends Module {
 
     @EventHandler
     private void onTick(Events.TickPre e) {
+        packetMove = null;
         if (rocketTimer > 0) rocketTimer--;
         if (!wearingElytra() || mc.player.hasVehicle() || mc.player.getAbilities().flying
             || Bali.MODULES.get(RocketControl.class).steering() || Bali.MODULES.get(dev.bali.module.combat.ElytraMace.class).busy()) {
@@ -147,12 +121,9 @@ public final class ElytraFly extends Module {
             return;
         }
         if (Bali.MODULES.get(ElytraRecast.class).reopening()) {
-            // the glide stopped for a moment so the elytra takes no damage; it reopens this tick.
-            // Keep the flight's rotation and state rather than treating it as a landing.
             if (!mode.is(Mode.Bounce) && !Float.isNaN(lastFacePitch)) face(lastFaceYaw, lastFacePitch, null);
             return;
         }
-        // only while we are actually flying: a broken elytra must not keep walking you forward
         if (autoForward.on()) {
             mc.options.forwardKey.setPressed(true);
             holdingForward = true;
@@ -161,6 +132,7 @@ public final class ElytraFly extends Module {
         }
         if (mode.is(Mode.Bounce)) bounce();
         else if (mode.is(Mode.Boost)) boost();
+        else if (mode.is(Mode.Packet)) packet();
         else pitch40();
 
         if (Recorder.active() && (lastGround != mc.player.isOnGround() || lastGlide != mc.player.isGliding())) {
@@ -179,8 +151,6 @@ public final class ElytraFly extends Module {
         }
         float yaw = lockedYaw();
         switch (pitchLock.get()) {
-            // Sent only to the server; the elytra move-fix makes our physics use it too, so the
-            // camera can look anywhere while Grim sees (and simulates) the locked rotation.
             case Silent -> Bali.ROTATIONS.rotate(yaw, bouncePitch(), RotationPriority.ELYTRA_FLY, null);
             case Client -> {
                 mc.player.setPitch(pitch.getF());
@@ -194,24 +164,20 @@ public final class ElytraFly extends Module {
         if (noJumpDelay.on()) mc.player.jumpingCooldown = 0;
 
         if (rubberbanded) {
-            setJump(false); // don't reopen while the server is still correcting us
+            setJump(false);
             if (restartTimer-- > 0) return;
             rubberbanded = false;
             Recorder.log("EFLY", "restarting after setback");
         }
 
         if (mc.player.isOnGround() || mc.player.isGliding()) {
-            // hold jump: re-jump the moment we land
             setJump(true);
         } else {
-            // airborne with the elytra closed. Vanilla (and Grim) only open it on a FRESH jump press,
-            // so release for one tick, then press: vanilla sends START_FALL_FLYING with matching input.
             setJump(!jumpDown);
             if (jumpDown) Recorder.log("EFLY", String.format(Locale.ROOT, "jump press to open elytra at y=%.2f vy=%.3f", mc.player.getY(), mc.player.getVelocity().y));
         }
     }
 
-    /** On the ground (the jump tick) and rising: steep; falling: Fall Pitch. Velocity is read before this tick's move, as the physics will use it. */
     private float bouncePitch() {
         if (!twoPhase.on()) return pitch.getF();
         return mc.player.isOnGround() || mc.player.getVelocity().y > 0 ? RISE_PITCH : fallPitch.getF();
@@ -221,8 +187,6 @@ public final class ElytraFly extends Module {
         return yawLock.on() ? Math.round(mc.player.getYaw() / 45f) * 45f : mc.player.getYaw();
     }
 
-    // ------------------------------------------------------------------ boost
-
     private void boost() {
         openWhenFalling();
         if (!mc.player.isGliding()) {
@@ -231,13 +195,13 @@ public final class ElytraFly extends Module {
         }
         double y = mc.player.getY();
         if (Double.isNaN(cruiseY)) cruiseY = y;
-        if (setbackPause > 0) { // let the server's correction settle with plain vanilla flight
+        if (setbackPause > 0) {
             setbackPause--;
             return;
         }
         boolean up = mc.options.jumpKey.isPressed() && !holdingJump;
         boolean down = mc.options.sneakKey.isPressed();
-        if (up || down) cruiseY = y; // steering by hand moves the cruise height with us
+        if (up || down) cruiseY = y;
 
         Vec3d vel = mc.player.getVelocity();
         float yaw = lockedYaw();
@@ -265,7 +229,50 @@ public final class ElytraFly extends Module {
         }
     }
 
-    // ------------------------------------------------------------------ pitch 40
+    private Vec3d packetMove;
+    private int packetOpenWait;
+
+    private void packet() {
+        packetMove = null;
+        if (packetOpenWait > 0) packetOpenWait--;
+        if (mc.player.isOnGround() || mc.player.isTouchingWater() || mc.player.isInLava() || mc.player.isClimbing()) return;
+        if (setbackPause > 0) {
+            setbackPause--;
+            return;
+        }
+        if (!mc.player.isGliding()) {
+            if (packetOpenWait > 0) return;
+            if (!mc.world.isSpaceEmpty(mc.player, mc.player.getBoundingBox().stretch(0, -0.5, 0))) return;
+            if (mc.player.checkGliding()) {
+                mc.getNetworkHandler().sendPacket(new ClientCommandC2SPacket(mc.player, ClientCommandC2SPacket.Mode.START_FALL_FLYING));
+                Recorder.log("EFLY", String.format(Locale.ROOT, "packet open at y=%.2f", mc.player.getY()));
+            }
+            packetOpenWait = 5;
+            if (!mc.player.isGliding()) return;
+        }
+
+        int f = (mc.options.forwardKey.isPressed() ? 1 : 0) - (mc.options.backKey.isPressed() ? 1 : 0);
+        int s = (mc.options.leftKey.isPressed() ? 1 : 0) - (mc.options.rightKey.isPressed() ? 1 : 0);
+        double h = 0, x = 0, z = 0;
+        if (f != 0 || s != 0) {
+            float yaw = lockedYaw() + (float) Math.toDegrees(Math.atan2(-s, f));
+            h = packetSpeed.getD() / 20;
+            x = -MathHelper.sin(yaw * MathHelper.RADIANS_PER_DEGREE) * h;
+            z = MathHelper.cos(yaw * MathHelper.RADIANS_PER_DEGREE) * h;
+        }
+        boolean up = mc.options.jumpKey.isPressed(), down = mc.options.sneakKey.isPressed();
+        double y = up == down ? -packetFall.getD() / 20 : (up ? 1 : -1) * packetVertical.getD() / 20;
+        packetMove = new Vec3d(x, y, z);
+        mc.player.setVelocity(packetMove);
+    }
+
+    @EventHandler
+    private void onMove(Events.Move e) {
+        if (packetMove == null || e.type != net.minecraft.entity.MovementType.SELF || !is(Mode.Packet)) return;
+        if (!mc.player.isGliding()) return;
+        e.movement = packetMove;
+        mc.player.setVelocity(packetMove);
+    }
 
     private void pitch40() {
         openWhenFalling();
@@ -284,7 +291,6 @@ public final class ElytraFly extends Module {
             if (setbackPause == 0) syncBounds("after setback");
             return;
         }
-        // jump / sneak move the bounds with you
         if (mc.options.jumpKey.isPressed() && !holdingJump) p40Home = p40Top = Math.min(maxY(), p40Top + 0.5);
         if (mc.options.sneakKey.isPressed()) p40Home = p40Top -= 0.5;
 
@@ -293,14 +299,13 @@ public final class ElytraFly extends Module {
         Runnable fire = null;
         float target;
         if (rocket) {
-            // burn: climb back to the top bound, then dive again
             if (grimBoost.on()) {
                 double vy = MathHelper.clamp(p40Top - y, 0, rocketClimb.getD() / 20);
                 GrimBoost.request(vy, boostSpeed.getD() / 20);
                 target = GrimBoost.burnPitch(vy);
-                p40Pitch = target; // the box follows the look: no easing during a burn
+                p40Pitch = target;
             } else {
-                target = p40Climb.getF(); // the vanilla push follows the look
+                target = p40Climb.getF();
             }
             p40Diving = y >= p40Top - 1;
             p40Rose = false;
@@ -322,13 +327,11 @@ public final class ElytraFly extends Module {
                 if (y >= p40Top) {
                     p40Diving = true;
                 } else if (p40Rose && vel.y <= 0) {
-                    // the climb ran out of speed short of the top
                     p40Diving = true;
                     p40Stalls++;
                     if (Bali.MODULES.get(ElytraRecast.class).busy()) {
-                        // mid-recast the server isn't gliding and won't use a rocket: dive, the next stall fires it
                     } else if (p40Rockets.on() && y < p40Home - p40Drop.getD() && rocketTimer <= 0 && InvUtil.count(Items.FIREWORK_ROCKET) > 0) {
-                        fire = this::fireRocket; // slowest point: a burn gains the most here
+                        fire = this::fireRocket;
                         p40StallRockets++;
                         Recorder.log("EFLY", String.format(Locale.ROOT, "pitch40 stall at y=%.1f (armed %.1f): rocket back up", y, p40Home));
                         p40Top = p40Home;
@@ -345,7 +348,6 @@ public final class ElytraFly extends Module {
         face(yaw, p40Pitch, fire);
     }
 
-    /** Top bound = where we are now (under the ceiling); start with the dive. */
     private void syncBounds(String why) {
         p40Home = p40Top = Math.min(mc.player.getY(), maxY());
         p40Diving = true;
@@ -354,12 +356,11 @@ public final class ElytraFly extends Module {
         Recorder.log("EFLY", String.format(Locale.ROOT, "pitch40 bounds %.1f..%.1f (%s)", p40Top - p40Bounds.getD(), p40Top, why));
     }
 
-    /** Stall counters since enabling (stalls, rockets fired at stalls), for tests. */
     public int[] pitch40Stats() { return new int[]{p40Stalls, p40StallRockets}; }
 
     private void openWhenFalling() {
         if (autoOpen.on() && !mc.player.isOnGround() && !mc.player.isGliding() && mc.player.getVelocity().y < -0.1 && !mc.player.isTouchingWater()) {
-            setJump(!jumpDown); // fresh press opens the elytra the vanilla way
+            setJump(!jumpDown);
         } else {
             releaseJump();
         }
@@ -371,7 +372,6 @@ public final class ElytraFly extends Module {
         return c;
     }
 
-    /** Silent rotation with the move-fix (our physics use it too); without move-fix, a real one. */
     private void face(float yaw, float pitch, Runnable afterSend) {
         lastFaceYaw = yaw;
         lastFacePitch = pitch;
@@ -385,7 +385,6 @@ public final class ElytraFly extends Module {
     }
 
     private void fireRocket() {
-        // mid-recast the server has already stopped our glide and would not use the rocket
         if (rocketTimer > 0 || Bali.MODULES.get(ElytraRecast.class).busy()) return;
         Runnable use = () -> mc.interactionManager.interactItem(mc.player, Hand.MAIN_HAND);
         int hot = InvUtil.findHotbar(Items.FIREWORK_ROCKET);
@@ -394,23 +393,25 @@ public final class ElytraFly extends Module {
         } else {
             int inv = InvUtil.canClickInventory() ? InvUtil.findInventory(Items.FIREWORK_ROCKET) : -1;
             if (inv == -1) return;
-            if (!InvUtil.invSwap(inv, use)) return; // keys released for the click (no effect while gliding); fires next tick
+            if (!InvUtil.invSwap(inv, use)) return;
         }
         rocketTimer = rocketDelay.getI();
         Recorder.log("EFLY", String.format(Locale.ROOT, "rocket at y=%.1f cruise=%.1f speed=%.1f b/s",
             mc.player.getY(), cruiseY, mc.player.getVelocity().horizontalLength() * 20));
     }
 
-    /** True while we fly rockets ourselves: the vanilla client-side rocket push must not also apply. */
     public boolean ownsRocketBoost() {
-        return isEnabled() && !mode.is(Mode.Bounce) && grimBoost.on() && setbackPause == 0 && mc.player != null && mc.player.isGliding();
+        return isEnabled() && !mode.is(Mode.Bounce) && !mode.is(Mode.Packet) && grimBoost.on() && setbackPause == 0 && mc.player != null && mc.player.isGliding();
     }
-
-    // ------------------------------------------------------------------ shared
 
     @EventHandler
     private void onReceive(Events.PacketReceive e) {
         if (!(e.packet instanceof PlayerPositionLookS2CPacket)) return;
+        if (is(Mode.Packet)) {
+            setbackPause = 5;
+            Recorder.log("EFLY", "setback during packet flight");
+            return;
+        }
         if (!is(Mode.Bounce)) {
             setbackPause = 20;
             Recorder.log("EFLY", "setback during boost flight");
@@ -426,7 +427,6 @@ public final class ElytraFly extends Module {
     private boolean jumpDown;
     private boolean holdingForward;
 
-    /** Gives W back to the keyboard: pressed only if you are physically holding it. */
     private void releaseForward() {
         if (!holdingForward) return;
         holdingForward = false;

@@ -27,15 +27,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
-/**
- * Category panels. Left click: toggle / change. Right click: expand module / cycle enum back.
- * Drag panel headers to move them, scroll to move all panels, type to search.
- *
- * Stash map panel: shown while StashFinderBot is on or expanded. Hover a stash to see why it was
- * flagged, scroll on the map to zoom, drag to pan, right click to go back to auto zoom.
- */
 public final class ClickGuiScreen extends Screen {
-    /** category name -> {x, y, open} ; persisted by ConfigManager. */
     public static final Map<String, int[]> PANEL_STATE = new HashMap<>();
     private static final Set<Module> EXPANDED = new HashSet<>();
 
@@ -57,7 +49,6 @@ public final class ClickGuiScreen extends Screen {
     private Module binding;
     private String search = "";
 
-    // stash map panel (position persisted in PANEL_STATE like the category panels)
     private static final String MAP_KEY = "STASHMAP";
     private static final int MAP_SIZE = 220;
     private boolean mapVisible;
@@ -66,7 +57,6 @@ public final class ClickGuiScreen extends Screen {
     private boolean draggingMap, panningMap;
     private StashMapWidget.Hover mapHover;
 
-    /** Opens a module's settings (tests). */
     public static void expand(Module m) { EXPANDED.add(m); }
 
     public ClickGuiScreen() {
@@ -86,7 +76,6 @@ public final class ClickGuiScreen extends Screen {
         if (Bali.MODULES.clickGui().darken.on()) ctx.fill(0, 0, width, height, 0x60000000);
     }
 
-    /** GUI scale from the ClickGUI module; all layout happens in scaled space. */
     private static float scale() { return Bali.MODULES.clickGui().scale.getF(); }
 
     @Override
@@ -146,7 +135,7 @@ public final class ClickGuiScreen extends Screen {
         mapHover = null;
         mapVisible = mapPanelWanted();
         if (mapVisible) {
-            if (mouseOverMap(mouseX, mouseY)) hovered = null; // the map is on top of the panels
+            if (mouseOverMap(mouseX, mouseY)) hovered = null;
             renderMapPanel(ctx, mouseX, mouseY, width, accent);
         }
 
@@ -166,8 +155,6 @@ public final class ClickGuiScreen extends Screen {
         }
         if (mapHover != null && !draggingMap && !panningMap) StashMapWidget.drawTooltip(ctx, mapHover.lines(), mouseX, mouseY, width, height);
     }
-
-    // ------------------------------------------------------------------ stash map panel
 
     private static boolean mapPanelWanted() {
         Module bot = Bali.MODULES.get(dev.bali.module.misc.StashFinderBot.class);
@@ -250,14 +237,12 @@ public final class ClickGuiScreen extends Screen {
             }
             y += SROW;
         }
-        // bind row
         ctx.fill(x, y, x + W, y + SROW, SET_BG);
         String bind = binding == m ? "..." : KeyNames.name(m.getKey());
         ctx.drawTextWithShadow(textRenderer, "Bind", x + 7, y + 2, TEXT);
         ctx.drawTextWithShadow(textRenderer, bind, x + W - 4 - textRenderer.getWidth(bind), y + 2, DIM);
         rows.add(new Row(Kind.BIND, x, y, W, SROW, m.category, m, null, -1));
         y += SROW;
-        // drawn row: show this module in the HUD array list
         ctx.fill(x, y, x + W, y + SROW, SET_BG);
         ctx.drawTextWithShadow(textRenderer, "Drawn", x + 7, y + 2, m.isDrawn() ? accent : DIM);
         String dv = m.isDrawn() ? "Shown" : "Hidden";
@@ -265,8 +250,6 @@ public final class ClickGuiScreen extends Screen {
         rows.add(new Row(Kind.DRAWN, x, y, W, SROW, m.category, m, null, -1));
         return y + SROW;
     }
-
-    // ------------------------------------------------------------------ input
 
     @Override
     public boolean mouseClicked(Click click, boolean doubled) {
@@ -280,7 +263,6 @@ public final class ClickGuiScreen extends Screen {
             }
             binding = null;
         }
-        // the map panel is drawn last, so it is on top
         if (mouseOverMap(mx, my)) {
             if (my < mapY + HEADER) {
                 int[] st = PANEL_STATE.get(MAP_KEY);
@@ -295,7 +277,6 @@ public final class ClickGuiScreen extends Screen {
             }
             return true;
         }
-        // iterate top-most last drawn first
         for (int i = rows.size() - 1; i >= 0; i--) {
             Row r = rows.get(i);
             if (!r.hit(mx, my)) continue;
@@ -375,7 +356,6 @@ public final class ClickGuiScreen extends Screen {
             return true;
         }
         if (sliding != null) {
-            // the row may have moved if the panel moved; re-find it
             for (Row r : rows) {
                 if (r.setting == sliding && r.channel == slidingChannel) {
                     slidingRow = r;

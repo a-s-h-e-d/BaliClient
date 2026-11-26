@@ -20,16 +20,6 @@ import net.minecraft.entity.decoration.EndCrystalEntity;
 import net.minecraft.item.Item;
 import net.minecraft.item.Items;
 
-/**
- * Keeps a totem in the offhand. In Smart mode it holds a fallback item (crystals / gapples)
- * while you are safe and switches to a totem as soon as health or a nearby threat says so.
- *
- * Grim (MultiActionsC) cancels an inventory click sent while the last input had a movement key,
- * jump or sneak held, or while sprinting. So:
- * - Offhand empty after a pop and a totem in the hotbar: the offhand swap key (F) is used on that
- *   slot instead. It is not an inventory click, so it goes through while you keep moving.
- * - Otherwise the click waits for a clean input: keys are released for one tick (50 ms) if needed.
- */
 public final class AutoTotem extends Module {
     public enum Mode { Totem, Smart }
     public enum Fallback { Crystal, Gapple }
@@ -60,7 +50,6 @@ public final class AutoTotem extends Module {
         doSwap();
     }
 
-    /** React to our own pop immediately instead of waiting for the next tick. */
     @EventHandler(priority = 100)
     private void onPop(Events.TotemPop e) {
         if (e.player == mc.player) {
@@ -86,22 +75,16 @@ public final class AutoTotem extends Module {
             timer = delay.getI();
             return;
         }
-        if (!ClickGate.tryClick()) return; // keys released this tick; the click goes out next tick
+        if (!ClickGate.tryClick()) return;
         InvUtil.swapClick(InvUtil.toScreenSlot(slot), 40);
         if (closePacket.on()) InvUtil.closeInventoryPacket();
         timer = delay.getI();
     }
 
-    /**
-     * Swaps hotbar {@code slot} with the offhand the way the F key does (held-slot packets around it
-     * if it isn't the held slot). Not while using an item or mining: the slot change would cancel
-     * those, and Grim checks slot changes and offhand swaps against them.
-     */
     private boolean offhandKeySwap(int slot) {
         if (mc.player.isUsingItem() || mc.interactionManager.isBreakingBlock() || mc.getNetworkHandler() == null) return false;
         InvUtil.silentSwap(slot, () -> mc.getNetworkHandler().sendPacket(
             new PlayerActionC2SPacket(PlayerActionC2SPacket.Action.SWAP_ITEM_WITH_OFFHAND, BlockPos.ORIGIN, Direction.DOWN)));
-        // the server doesn't echo this right away: predict it so the next tick doesn't swap again
         ItemStack hot = mc.player.getInventory().getStack(slot);
         mc.player.getInventory().setStack(slot, mc.player.getOffHandStack());
         mc.player.setStackInHand(Hand.OFF_HAND, hot);
@@ -109,8 +92,6 @@ public final class AutoTotem extends Module {
     }
 
     private Item wantedItem() {
-        // KillAura's Offhand Gap (right click held, above its Gap Health) works in both modes, but
-        // never over a real danger: those keep the totem in
         Item gap = dev.bali.Bali.MODULES.get(KillAura.class).offhandGapple();
         if (gap != null && !danger()) return gap;
         if (mode.is(Mode.Totem)) return Items.TOTEM_OF_UNDYING;
@@ -124,7 +105,6 @@ public final class AutoTotem extends Module {
         return fallback.is(Fallback.Crystal) ? Items.END_CRYSTAL : Items.ENCHANTED_GOLDEN_APPLE;
     }
 
-    /** Flying, a fall or a crystal that could kill us (each behind its setting). */
     private boolean danger() {
         if (elytraCheck.on() && mc.player.isGliding()) return true;
         if (fallCheck.on() && mc.player.fallDistance > 3 && mc.player.fallDistance - 3 >= DamageUtil.health(mc.player)) return true;

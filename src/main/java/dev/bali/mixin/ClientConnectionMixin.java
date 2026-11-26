@@ -15,10 +15,6 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-/**
- * ClientConnection is shared by both ends: in singleplayer the integrated server's connections are
- * this class too. Only the client's own connection (side CLIENTBOUND) fires events.
- */
 @Mixin(ClientConnection.class)
 public abstract class ClientConnectionMixin {
     @Shadow public abstract NetworkSide getSide();
@@ -36,9 +32,6 @@ public abstract class ClientConnectionMixin {
             ci.cancel();
             return;
         }
-        // Servers group related packets (an entity spawn + its metadata, etc.) into bundles, and the
-        // client applies bundle contents without going through handlePacket. Expose them too.
-        // Sub-packets are observable but not individually cancellable.
         if (packet instanceof BundleS2CPacket bundle) {
             for (Packet<?> sub : bundle.getPackets()) Bali.EVENTS.post(new Events.PacketReceive(sub));
         }

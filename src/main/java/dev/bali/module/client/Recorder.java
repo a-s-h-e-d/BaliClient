@@ -46,11 +46,6 @@ import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-/**
- * Writes a detailed session log to .minecraft/bali/logs/ for diagnosing anticheat problems:
- * what we sent, every server setback with full player state, crystal spawns/deaths, server chat,
- * plus module decision logs (AutoCrystal, ElytraFly). Turn it on, test, turn it off.
- */
 public final class Recorder extends Module {
     private final BoolSetting movement = bool("Movement Packets", true, "Log every movement packet (noisy, needed for flight issues)");
     private final BoolSetting other = bool("Other Packets", true, "Log interactions, slots, commands, chat");
@@ -73,7 +68,6 @@ public final class Recorder extends Module {
         setDrawn(true);
     }
 
-    /** Module decision logging, usable from any thread. Cheap no-op when off. */
     public static void log(String category, String msg) {
         Recorder r = instance;
         if (r == null || !r.isEnabled() || !r.modules.on()) return;
@@ -134,7 +128,6 @@ public final class Recorder extends Module {
             write("STATE", state());
         }
         if (mc.player != null) logElytraDurability();
-        // during fights: where everyone near you is, every 5 ticks
         if (tick % 5 == 0 && mc.player != null && mc.world != null) {
             StringBuilder sb = new StringBuilder();
             for (var pl : mc.world.getPlayers()) {
@@ -148,10 +141,6 @@ public final class Recorder extends Module {
 
     private int lastElytraDamage = -1, glideTicks;
 
-    /**
-     * Only the server damages an elytra, so every change seen here is real durability lost (or mended).
-     * Logged with how long the client has been gliding without a break, to check ElytraRecast.
-     */
     private void logElytraDurability() {
         glideTicks = mc.player.isGliding() ? glideTicks + 1 : 0;
         net.minecraft.item.ItemStack elytra = mc.player.getEquippedStack(net.minecraft.entity.EquipmentSlot.CHEST);
@@ -183,16 +172,12 @@ public final class Recorder extends Module {
         return s.isEmpty() ? "-" : net.minecraft.registry.Registries.ITEM.getId(s.getItem()).getPath();
     }
 
-    /** "name" for players, "self" for you, entity type otherwise. */
     private String who(net.minecraft.entity.Entity ent) {
         if (ent == null) return "?";
         if (ent == mc.player) return "SELF";
         return ent instanceof net.minecraft.entity.player.PlayerEntity pl ? pl.getGameProfile().name() : ent.getType().getUntranslatedName();
     }
 
-    // ------------------------------------------------------------------ packets
-
-    /** Lowest priority so cancelled packets (Blink etc.) are reported as held, not sent. */
     @EventHandler(priority = -100_000)
     private void onSend(Events.PacketSend e) {
         Packet<?> p = e.packet;
@@ -260,7 +245,6 @@ public final class Recorder extends Module {
         } else if (p instanceof net.minecraft.network.packet.s2c.play.InventoryS2CPacket inv && inv.syncId() == 0 && inv.contents().size() > 6) {
             write("IN", "INVENTORY_SYNC chest=" + itemName(inv.contents().get(6)));
         } else if (p instanceof net.minecraft.network.packet.s2c.play.EntityTrackerUpdateS2CPacket tu && mc.player != null && tu.id() == mc.player.getId()) {
-            // entity flags (tracked data 0), bit 7 = gliding: the server's view of our glide
             for (var entry : tu.trackedValues()) {
                 if (entry.id() == 0 && entry.value() instanceof Byte b) write("IN", "SELF_GLIDE " + ((b & 0x80) != 0 ? "on" : "off"));
             }
@@ -272,8 +256,6 @@ public final class Recorder extends Module {
             write("KICK", dc.reason().getString());
         }
     }
-
-    // ------------------------------------------------------------------ helpers
 
     private String state() {
         if (mc.player == null) return "no player";
@@ -305,7 +287,6 @@ public final class Recorder extends Module {
         return String.format(Locale.ROOT, "%.3f,%.3f,%.3f", v.x, v.y, v.z);
     }
 
-    /** Opens the logs folder in Explorer (used by the .logs command). */
     public static void openFolder() {
         Path dir = mc.runDirectory.toPath().resolve("bali").resolve("logs");
         try { Files.createDirectories(dir); } catch (IOException ignored) {}

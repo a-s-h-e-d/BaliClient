@@ -8,10 +8,6 @@ import dev.bali.setting.EnumSetting;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.network.packet.c2s.play.PlayerMoveC2SPacket;
 
-/**
- * Packet: classic offset packets. Grim's simulation flags these, so it's for non-Grim servers.
- * Jump: KillAura jumps and waits until falling, which is a real crit and is safe everywhere.
- */
 public final class Criticals extends Module {
     public enum Mode { Jump, Packet }
 
@@ -24,7 +20,6 @@ public final class Criticals extends Module {
     @Override
     public String getInfo() { return mode.get().name(); }
 
-    /** KillAura asks this before swinging. */
     public boolean shouldWait() {
         if (!mode.is(Mode.Jump)) return false;
         if (mc.player.isTouchingWater() || mc.player.isInLava() || mc.player.isClimbing() || mc.player.hasVehicle()) return false;
@@ -32,7 +27,6 @@ public final class Criticals extends Module {
             mc.player.jump();
             return true;
         }
-        // wait until we're falling so the hit counts as a crit
         return mc.player.fallDistance <= 0 || mc.player.getVelocity().y > 0;
     }
 

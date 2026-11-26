@@ -11,7 +11,6 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.util.hit.BlockHitResult;
 import net.minecraft.util.hit.HitResult;
 
-/** Switches to the fastest tool while you mine, and back afterwards. */
 public final class AutoTool extends Module {
     private final BoolSetting switchBack = bool("Switch Back", true, "Return to the previous slot after mining");
     private final BoolSetting saveTools = bool("Save Tools", true, "Skip tools about to break");

@@ -10,7 +10,6 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-/** Explosion smoke/poof burst spawned from the explosion packet. */
 @Mixin(ClientWorld.class)
 public abstract class WeatherAndExplosionMixins {
     @Inject(method = "addBlockParticleEffects", at = @At("HEAD"), cancellable = true)

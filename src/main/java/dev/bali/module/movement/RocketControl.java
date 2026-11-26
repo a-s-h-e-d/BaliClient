@@ -15,17 +15,6 @@ import dev.bali.util.RotationUtil;
 import net.minecraft.network.packet.s2c.play.PlayerPositionLookS2CPacket;
 import net.minecraft.util.math.Vec3d;
 
-/**
- * Point-and-go elytra flight on rockets, relative to the camera.
- *
- * Vertical layout: W up, S down, A left, D right, Space forward, Shift back.
- * Standard layout: W forward, S back, A left, D right, Space up, Shift down.
- *
- * While a rocket is attached Grim accepts any velocity inside a box of up to 1.7 b/t per axis around
- * the look (see {@link GrimBoost}), so we send a silent look along the wanted direction and take the
- * velocity straight down that line: no turning circle, straight up or straight sideways. With no
- * key held it brakes and hovers for the rest of the rocket. Your camera stays free.
- */
 public final class RocketControl extends Module {
     public enum Layout { Vertical, Standard }
 
@@ -47,7 +36,6 @@ public final class RocketControl extends Module {
     @Override
     public String getInfo() { return layout.get().name(); }
 
-    /** True on ticks where RocketControl flies the elytra (ElytraFly stands down). */
     public boolean steering() { return isEnabled() && steering; }
 
     @EventHandler
@@ -75,7 +63,6 @@ public final class RocketControl extends Module {
 
         if (!rocket) {
             if (fireRun == null) return;
-            // look the way we want to go so the rocket's first tick already pushes there
             float[] r = keys ? GrimBoost.lookAlong(dir) : new float[]{mc.player.getYaw(), mc.player.getPitch()};
             GrimBoost.face(r[0], r[1], RotationPriority.ROCKET_CONTROL, fireRun);
             return;
@@ -87,12 +74,10 @@ public final class RocketControl extends Module {
             float[] r = GrimBoost.lookAlong(want);
             GrimBoost.face(r[0], r[1], RotationPriority.ROCKET_CONTROL, null);
         } else {
-            // brake: zero is inside Grim's box once the last tick's speed has been bled off
             GrimBoost.requestVelocity(Vec3d.ZERO);
         }
     }
 
-    /** Wanted direction in world space from the held keys and the camera yaw (not normalized). */
     private Vec3d wantedDirection() {
         boolean w = mc.options.forwardKey.isPressed(), s = mc.options.backKey.isPressed();
         boolean a = mc.options.leftKey.isPressed(), d = mc.options.rightKey.isPressed();
@@ -105,9 +90,8 @@ public final class RocketControl extends Module {
             fwd = (w ? 1 : 0) - (s ? 1 : 0);
             vert = (up ? 1 : 0) - (down ? 1 : 0);
         }
-        double side = (a ? 1 : 0) - (d ? 1 : 0); // + = left
+        double side = (a ? 1 : 0) - (d ? 1 : 0);
         double yaw = Math.toRadians(mc.player.getYaw());
-        // forward (0 pitch) is (-sin yaw, 0, cos yaw); left is (cos yaw, 0, sin yaw)
         double x = -Math.sin(yaw) * fwd + Math.cos(yaw) * side;
         double z = Math.cos(yaw) * fwd + Math.sin(yaw) * side;
         return new Vec3d(x, vert, z);

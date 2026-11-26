@@ -34,11 +34,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-/**
- * Finds every block from a configurable list in all loaded chunks. Chunks are scanned on a
- * background thread when they load (skipping sections that can't contain a match), kept up to date
- * from block update packets, and dropped when they unload.
- */
 public final class BlockESP extends Module {
     public enum Mode { Box, Outline, Fill }
     public enum ColorMode { MapColor, Custom }
@@ -63,7 +58,6 @@ public final class BlockESP extends Module {
         t.setPriority(Thread.MIN_PRIORITY);
         return t;
     });
-    /** Map colors are often useless (ores are "stone gray"), so common search targets get real colors. */
     private static final Map<Block, Integer> KNOWN_COLORS = Map.ofEntries(
         Map.entry(Blocks.DIAMOND_ORE, 0x33EBCB), Map.entry(Blocks.DEEPSLATE_DIAMOND_ORE, 0x33EBCB),
         Map.entry(Blocks.ANCIENT_DEBRIS, 0xB0603A),
@@ -104,8 +98,6 @@ public final class BlockESP extends Module {
     @Override
     protected void onDisable() { found.clear(); }
 
-    // ------------------------------------------------------------------ scanning
-
     private void rescanAll() {
         found.clear();
         colorCache.clear();
@@ -127,7 +119,7 @@ public final class BlockESP extends Module {
             try {
                 scanChunk(chunk, targets);
             } catch (Throwable t) {
-                Bali.LOG.debug("BlockESP scan failed", t); // chunk unloaded/changed mid-scan, harmless
+                Bali.LOG.debug("BlockESP scan failed", t);
             }
         });
     }
@@ -174,8 +166,6 @@ public final class BlockESP extends Module {
         }
     }
 
-    // ------------------------------------------------------------------ render
-
     @EventHandler
     private void onRender(Events.Render3D e) {
         Vec3d eye = e.cameraPos;
@@ -194,7 +184,7 @@ public final class BlockESP extends Module {
         Vec3d tracerStart = dev.bali.util.Render3D.crosshair();
         for (BlockPos p : list) {
             BlockState st = mc.world.getBlockState(p);
-            if (!blocks.contains(st.getBlock())) continue; // stale entry
+            if (!blocks.contains(st.getBlock())) continue;
             int color = colorFor(st, p);
             int fill = (color & 0x00FFFFFF) | (fillAlpha.getI() << 24);
             Box box = boxFor(st, p);

@@ -16,12 +16,6 @@ import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Vec2f;
 import net.minecraft.util.math.Vec3d;
 
-/**
- * GrimCollide: Grim can't fully predict entity pushing, so standing in other entities lets you add a
- *   little velocity per entity. Works in crowds / near your own mobs or boats. Grim-safe.
- * Bhop: legit sprint-jumping, also Grim-safe.
- * Strafe: classic speed, will be set back by Grim; for other servers.
- */
 public final class Speed extends Module {
     public enum Mode { GrimCollide, Bhop, Strafe }
 
@@ -76,9 +70,8 @@ public final class Speed extends Module {
         e.movement = new Vec3d(dir.x * s, e.movement.y, dir.z * s);
     }
 
-    /** Unit horizontal vector of the direction WASD is pushing relative to the camera yaw. */
     private Vec3d moveDirection() {
-        Vec2f in = mc.player.input.getMovementInput(); // x = strafe (left +), y = forward
+        Vec2f in = mc.player.input.getMovementInput();
         double yaw = Math.toRadians(mc.player.getYaw());
         double fx = -Math.sin(yaw), fz = Math.cos(yaw);
         double sx = Math.cos(yaw), sz = Math.sin(yaw);

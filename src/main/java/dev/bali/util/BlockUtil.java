@@ -24,7 +24,6 @@ public final class BlockUtil {
 
     private static final MinecraftClient mc = MinecraftClient.getInstance();
 
-    /** Where to click to place a block at a position: the neighbour, its face, and the hit vector. */
     public record PlaceInfo(BlockPos neighbor, Direction side, Vec3d hitVec, BlockPos target) {
         public BlockHitResult hitResult() { return new BlockHitResult(hitVec, side, neighbor, false); }
     }
@@ -35,7 +34,6 @@ public final class BlockUtil {
 
     public static boolean isAir(BlockPos pos) { return state(pos).isAir(); }
 
-    /** No living entities (or anything but items/xp) inside the block space. */
     public static boolean noEntityCollision(BlockPos pos) {
         Box box = new Box(pos);
         for (Entity e : mc.world.getOtherEntities(null, box)) {
@@ -49,10 +47,6 @@ public final class BlockUtil {
         return isReplaceable(pos) && noEntityCollision(pos);
     }
 
-    /**
-     * Finds a legit placement for {@code pos}: a solid neighbour whose clicked face is facing the eyes
-     * (Grim checks you can't click a face pointing away from you) and within reach.
-     */
     public static PlaceInfo placeInfo(BlockPos pos, boolean strictDirection, double range) {
         Vec3d eye = mc.player.getEyePos();
         PlaceInfo best = null;
@@ -62,7 +56,6 @@ public final class BlockUtil {
             BlockState ns = state(neighbor);
             if (ns.isReplaceable() || !ns.getFluidState().isEmpty() && ns.isReplaceable()) continue;
             if (ns.getCollisionShape(mc.world, neighbor).isEmpty()) continue;
-            // clicking these opens/uses them instead of placing, so the block never appears
             if (isClickable(ns)) continue;
             Direction side = dir.getOpposite();
             Vec3d hit = Vec3d.ofCenter(neighbor).add(Vec3d.of(side.getVector()).multiply(0.5));
@@ -77,14 +70,9 @@ public final class BlockUtil {
         return best;
     }
 
-    /**
-     * Blocks that do something when right-clicked without sneaking (containers, ender chests, doors,
-     * anvils, respawn anchors...). Placing against one opens/uses it instead of placing, and a module
-     * that retries every tick would spam it until the server kicks.
-     */
     public static boolean isClickable(BlockState s) {
         Block b = s.getBlock();
-        return b instanceof BlockWithEntity // chests, ender chests, shulkers, furnaces, hoppers, beds, signs...
+        return b instanceof BlockWithEntity
                 || b instanceof CraftingTableBlock || b instanceof AnvilBlock || b instanceof LoomBlock
                 || b instanceof CartographyTableBlock || b instanceof GrindstoneBlock || b instanceof StonecutterBlock
                 || b instanceof ButtonBlock || b instanceof LeverBlock || b instanceof DoorBlock
@@ -93,7 +81,6 @@ public final class BlockUtil {
                 || b instanceof FlowerPotBlock || b instanceof ComposterBlock || b instanceof DragonEggBlock;
     }
 
-    /** True if the eye is on the outward side of the face plane (the face can be seen). */
     public static boolean faceVisible(Vec3d eye, BlockPos block, Direction side) {
         Vec3d c = Vec3d.ofCenter(block);
         return switch (side) {
@@ -106,18 +93,10 @@ public final class BlockUtil {
         };
     }
 
-    /**
-     * Places a block. With rotate, the click happens in the rotation callback (after the server has
-     * our new look), which is what Grim's RotationPlace check expects.
-     */
     public static boolean place(BlockPos pos, int hotbarSlot, boolean rotate, boolean strictDirection, double range, int priority) {
         return place(pos, hotbarSlot, rotate, strictDirection, range, priority, null);
     }
 
-    /**
-     * @param onClick runs once the click packet has actually been sent (with rotate, a higher-priority
-     *                rotation can drop it, and then this never runs)
-     */
     public static boolean place(BlockPos pos, int hotbarSlot, boolean rotate, boolean strictDirection, double range, int priority, Runnable onClick) {
         if (!canPlace(pos)) return false;
         PlaceInfo info = placeInfo(pos, strictDirection, range);
@@ -133,10 +112,6 @@ public final class BlockUtil {
         return true;
     }
 
-    /**
-     * End crystals whose box overlaps the block space (a crystal's 2x2 box reaches half a block into
-     * its neighbours, so one next door blocks a placement too). Null if anything else is in the way.
-     */
     public static List<EndCrystalEntity> blockingCrystals(BlockPos pos) {
         List<EndCrystalEntity> out = new ArrayList<>();
         for (Entity e : mc.world.getOtherEntities(null, new Box(pos))) {
@@ -148,18 +123,6 @@ public final class BlockUtil {
         return out;
     }
 
-    /**
-     * Breaks the crystal in the way and places the block in the same tick: one rotation at the
-     * placement's hit point, then the attack packet and the click. The server handles them in order,
-     * so the crystal is gone when the placement is checked and nothing can be put back in between.
-     * Grim's attack check needs that same look ray to enter the crystal's box within 3 blocks, so
-     * this only goes ahead when it does.
-     *
-     * Only one entity is hit per tick (as AutoCrystal does). With two crystals in the way this tick
-     * breaks one without clicking ({@code onClick} does not run) and the next tick does the rest.
-     *
-     * @param maxSelf skip if breaking would deal us more than this (the crystals explode on us)
-     */
     public static boolean placeBreakingCrystals(BlockPos pos, int hotbarSlot, boolean strictDirection, double range,
                                                 int priority, float maxSelf, Runnable onClick) {
         if (!isReplaceable(pos)) return false;

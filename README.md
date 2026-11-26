@@ -6,7 +6,7 @@ Open the menu with **Right Shift**. Commands use the `.` prefix (`.help`).
 
 ## Highlights
 
-- **ElytraFly**: Bounce, Boost and Pitch40 modes. Pitch40 climbs and dives between two heights, and it uses rockets only when a climb stalls or when you start a glide too slowly.
+- **ElytraFly**: Bounce, Boost and Pitch40 modes (plus Packet, for servers without Grim). Pitch40 climbs and dives between two heights, and it uses rockets only when a climb stalls or when you start a glide too slowly.
 - **ElytraMace**: dives at a target on an elytra, swaps the chestplate in at the right moment and lands mace smashes.
 - **AutoCrystal**: places and breaks end crystals, using damage calculations and rotations that pass Grim.
 - **StashFinder + StashFinderBot**: highlights chunks that may hold a stash or base, and flies an elytra-and-rocket bot that searches the map for them.
@@ -16,7 +16,7 @@ Open the menu with **Right Shift**. Commands use the `.` prefix (`.help`).
 
 **Combat**: AntiMace, AutoArmor, AutoCrystal, AutoLog, AutoTotem, AutoTrap, Criticals, ElytraMace, HoleFiller, KillAura, MaceDtap, Surround, Velocity
 
-**Movement**: AutoWalk, Blink, ElytraFly, ElytraRecast, NoFall, NoSlow, RocketControl, Speed, Sprint, YawLock
+**Movement**: AutoWalk, Blink, ElytraFly, ElytraRecast, NoFall, NoSlow, RocketControl, Scaffold, Speed, Sprint, YawLock
 
 **Player**: AntiHunger, AutoEat, AutoRespawn, AutoTool, FastPlace, MiddleClick, Replenish, XPThrower
 

@@ -33,7 +33,7 @@ public final class AutoLog extends Module {
         else if (onPlayer.on()) {
             for (Entity ent : mc.world.getPlayers()) {
                 if (ent == mc.player || !(ent instanceof PlayerEntity p) || dev.bali.Bali.FRIENDS.isFriend(p)) continue;
-                if (p.getId() < 0) continue; // our own Blink ghost / FakePlayer
+                if (p.getId() < 0) continue;
                 if (p.distanceTo(mc.player) <= playerRange.getF()) {
                     reason = "Player " + p.getGameProfile().name() + " in range";
                     break;

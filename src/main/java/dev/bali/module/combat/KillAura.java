@@ -34,7 +34,6 @@ public final class KillAura extends Module {
     private final BoolSetting hostiles = bool("Hostiles", false, "Attack hostile mobs");
     private final BoolSetting passives = bool("Passives", false, "Attack passive mobs");
     private final NumberSetting range = number("Range", 3.0, 1, 6, 0.05, "Attack range to the hitbox (survival is 3.0)");
-    // Hitting through blocks is legal: the server only checks distance and Grim's reach ray ignores blocks.
     private final NumberSetting wallRange = number("Wall Range", 3.0, 0, 6, 0.05, "Range when the target is behind blocks (same as Range = hit through walls)");
     private final NumberSetting cooldown = number("Cooldown", 0.95, 0, 1, 0.01, "Attack-charge needed before hitting");
     private final EnumSetting<Priority> priority = mode("Priority", Priority.Distance, "Target selection");
@@ -60,12 +59,6 @@ public final class KillAura extends Module {
 
     public LivingEntity target() { return isEnabled() ? target : null; }
 
-    /**
-     * The gapple to put in the offhand right now (enchanted first), or null: Offhand Gap on, right
-     * click held with a weapon (or nothing) in the main hand, health above Gap Health and one in the
-     * inventory. Right click then eats from the offhand. AutoTotem asks this and still puts the totem
-     * back on any danger. Holding blocks, a bow, XP bottles etc. never moves the totem.
-     */
     public net.minecraft.item.Item offhandGapple() {
         if (!isEnabled() || !offhandGap.on() || mc.player == null || !mc.options.useKey.isPressed()) return null;
         if (!weaponOrEmpty(mc.player.getMainHandStack())) return null;
@@ -77,7 +70,6 @@ public final class KillAura extends Module {
         return null;
     }
 
-    /** Main hand items whose right click does nothing in the air, so it falls through to the offhand. */
     private static boolean weaponOrEmpty(net.minecraft.item.ItemStack s) {
         return s.isEmpty() || s.isIn(net.minecraft.registry.tag.ItemTags.SWORDS) || s.isIn(net.minecraft.registry.tag.ItemTags.AXES)
                 || s.isOf(net.minecraft.item.Items.MACE);
@@ -88,12 +80,10 @@ public final class KillAura extends Module {
         target = findTarget();
         if (target == null) return;
         if (pauseEating.on() && (mc.player.isUsingItem() || Bali.MODULES.get(dev.bali.module.player.AutoEat.class).isEating())) return;
-        // AutoCrystal first: while it is working a spot we neither swap away from its crystals nor hit
         if (Bali.MODULES.get(AutoCrystal.class).busy()) return;
 
         if (weapon.is(Weapon.SwordAxe) && !isWeapon(mc.player.getMainHandStack())) return;
         if (weapon.is(Weapon.Switch)) {
-            // keep a sword, or a mace you picked on purpose (mace modules); anything else -> best sword
             ItemStack held = mc.player.getMainHandStack();
             int slot = held.isIn(ItemTags.SWORDS) || held.isOf(net.minecraft.item.Items.MACE) ? -1 : bestWeaponSlot();
             if (slot != -1 && slot != InvUtil.selected()) InvUtil.select(slot);
@@ -156,7 +146,6 @@ public final class KillAura extends Module {
         return true;
     }
 
-    /** Hotbar slot of the best weapon: a sword first (highest tier, then sharpness), else an axe, mace or spear. */
     private int bestWeaponSlot() {
         int best = -1;
         double bestScore = 0;

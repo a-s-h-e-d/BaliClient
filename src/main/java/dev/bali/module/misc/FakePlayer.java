@@ -16,10 +16,6 @@ import net.minecraft.network.packet.s2c.play.ExplosionS2CPacket;
 
 import java.util.UUID;
 
-/**
- * Spawns a client-side copy of you to test combat modules on. With "Simulate Damage" it takes
- * explosion damage computed by the same code AutoCrystal uses, and pops totems.
- */
 public final class FakePlayer extends Module {
     private final BoolSetting copyInventory = bool("Copy Inventory", true, "Wear your armor and items");
     private final BoolSetting simulate = bool("Simulate Damage", true, "Take explosion damage and pop totems");
@@ -32,7 +28,6 @@ public final class FakePlayer extends Module {
     private float lastDamage;
     private int hits;
 
-    /** Explosions that did damage (for tests). */
     public int hits() { return hits; }
     public int pops() { return pops; }
 
@@ -61,7 +56,6 @@ public final class FakePlayer extends Module {
         }
         fake.setHealth(20f);
         fake.setAbsorptionAmount(16f);
-        // pops need a totem in hand, like a real player; it holds one while it has any left
         if (simulate.on()) fake.equipStack(EquipmentSlot.OFFHAND, new ItemStack(net.minecraft.item.Items.TOTEM_OF_UNDYING));
         pops = 0;
         hits = 0;
@@ -90,7 +84,6 @@ public final class FakePlayer extends Module {
             if (dmg <= 0) return;
             boolean fresh = !hitCooldown.on() || fake.hurtTime <= 0;
             if (!fresh) {
-                // inside the cooldown: only damage above the last hit counts, and the timer is not reset
                 if (dmg <= lastDamage) return;
                 float extra = dmg - lastDamage;
                 lastDamage = dmg;
@@ -107,7 +100,6 @@ public final class FakePlayer extends Module {
             boolean holdsTotem = fake.getOffHandStack().isOf(net.minecraft.item.Items.TOTEM_OF_UNDYING)
                 || fake.getMainHandStack().isOf(net.minecraft.item.Items.TOTEM_OF_UNDYING);
             if (fake.getHealth() <= 0 && !holdsTotem) {
-                // no totem in hand: dead, like a real player (status 3 -> Events.Death)
                 fake.setHealth(0f);
                 fake.setAbsorptionAmount(0f);
                 fake.equipStack(EquipmentSlot.OFFHAND, ItemStack.EMPTY);
@@ -121,7 +113,6 @@ public final class FakePlayer extends Module {
                 pops++;
                 mc.particleManager.addEmitter(fake, net.minecraft.particle.ParticleTypes.TOTEM_OF_UNDYING, 30);
                 Bali.EVENTS.post(new Events.TotemPop(fake, pops));
-                // the used totem is gone; it "refills" only while it has totems left
                 boolean more = totems.getI() == 0 || pops < totems.getI();
                 fake.equipStack(EquipmentSlot.OFFHAND, more ? totem : ItemStack.EMPTY);
             }

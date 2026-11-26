@@ -25,20 +25,6 @@ import net.minecraft.util.math.Vec3d;
 
 import java.util.Locale;
 
-/**
- * Mace damage boost.
- *
- * Grim: every hit you make while falling becomes a full mace smash, and with Auto Smash it hits for
- *   you the moment one is ready. It tracks the fall distance the server has for us from the positions
- *   we send (the client's own value is not reset by a smash), swaps to the mace only for the hit and
- *   back on the next tick (swapping back in the same tick as an attack trips Grim's PacketOrderE), and
- *   ignores attack cooldown, because the smash bonus is not scaled by it. Use it with wind charges,
- *   Wind Burst, pearls or jumps off anything high.
- * Spoof: the classic fall-distance spoof. Before each mace hit it sends a move up by Height and back
- *   down, which the vanilla server counts as a Height-block fall. Grim simulates every move: the jump
- *   is an instant setback, and Grim cancels attacks while a setback is pending, so on Grim servers
- *   (2b2t) this mode never lands a hit. Kept for servers without a movement-simulating anticheat.
- */
 public final class MaceDtap extends Module {
     public enum Mode { Grim, Spoof }
     public enum Targets { Players, All }
@@ -52,7 +38,6 @@ public final class MaceDtap extends Module {
     private final NumberSetting spoofHeight = number("Height", 10, 1, 20, 0.5, "Fake fall height per hit (Spoof); 10 always fits vanilla's move limit, up to 20 on manual hits").visibleWhen(() -> is(Mode.Spoof));
     private final NumberSetting spoofPackets = number("Packets", 3, 0, 3, 1, "Stationary packets first, raising vanilla's per-tick move limit (Spoof)").visibleWhen(() -> is(Mode.Spoof));
 
-    /** Fall distance the server has for us, rebuilt from the move packets we send. */
     private double serverFall;
     private double lastSentY = Double.NaN;
     private int restoreSlot = -1;
@@ -81,15 +66,11 @@ public final class MaceDtap extends Module {
         restoreSlot = -1;
     }
 
-    /** Fall distance the server should have for us right now. */
     public double serverFall() { return serverFall; }
 
-    /** True when a mace hit sent now would get the smash bonus on the server. */
     public boolean smashReady() {
         return serverFall > Math.max(1.5, minFall.getD()) && !mc.player.isGliding();
     }
-
-    // ------------------------------------------------------------------ server fall tracking
 
     @EventHandler(priority = -500)
     private void onSend(Events.PacketSend e) {
@@ -97,15 +78,11 @@ public final class MaceDtap extends Module {
         double y = p.getY(lastSentY);
         double dy = Double.isNaN(lastSentY) ? 0 : y - lastSentY;
         lastSentY = y;
-        // ServerPlayNetworkHandler: an upward move calls onLanding(); Entity.fall adds downward moves and lands on onGround
         if (p.isOnGround() || dy > 0) serverFall = 0;
         else if (dy < 0 && !mc.player.isTouchingWater()) serverFall -= dy;
         if (mc.player.hasStatusEffect(StatusEffects.SLOW_FALLING) || mc.player.hasStatusEffect(StatusEffects.LEVITATION)) serverFall = 0;
-        // LivingEntity.tickGliding -> limitFallDistance: capped at 1 unless falling faster than 0.5 b/t
         if (mc.player.isGliding() && mc.player.getVelocity().y > -0.5 && serverFall > 1) serverFall = 1;
     }
-
-    // ------------------------------------------------------------------ tick
 
     @EventHandler
     private void onTick(Events.TickPre e) {
@@ -151,8 +128,6 @@ public final class MaceDtap extends Module {
         return eye.distanceTo(RotationUtil.closestPoint(l.getBoundingBox(), eye)) <= range.getD();
     }
 
-    // ------------------------------------------------------------------ every attack
-
     @EventHandler(priority = 100)
     private void onAttack(Events.Attack e) {
         if (reentrant || !(e.target instanceof LivingEntity target)) return;
@@ -162,7 +137,6 @@ public final class MaceDtap extends Module {
         if (maceSlot == -1) return;
 
         if (!holding) {
-            // swap now (before the attack, Grim allows that), swap back next tick
             e.cancel();
             int prev = InvUtil.selected();
             InvUtil.select(maceSlot);
@@ -187,13 +161,9 @@ public final class MaceDtap extends Module {
         int density = DamageUtil.enchantLevel(mc.player.getMainHandStack(), Enchantments.DENSITY);
         Recorder.log("MACE", String.format(Locale.ROOT, "smash #%d %s on %s fall=%.1f est bonus=%.1f",
             smashes, mode.get(), target.getName().getString(), fall, MaceUtil.smashBonus(fall, density)));
-        serverFall = 0; // MaceItem.postDamageEntity -> onLanding
+        serverFall = 0;
     }
 
-    /**
-     * Vanilla accepts sqrt(100 * n) blocks for the n-th move packet of a tick (n over 5 counts as 1):
-     * pad with stationary packets so the up and down moves land on n = 4 and 5 (20+ blocks each).
-     */
     private void spoof() {
         double x = mc.player.getX(), y = mc.player.getY(), z = mc.player.getZ();
         boolean hc = mc.player.horizontalCollision;

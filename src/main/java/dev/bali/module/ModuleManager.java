@@ -54,7 +54,6 @@ import java.util.List;
 import java.util.Map;
 
 public final class ModuleManager {
-    /** Mouse buttons are stored as MOUSE_OFFSET + button so they share the key field. */
     public static final int MOUSE_OFFSET = 1000;
 
     private final List<Module> modules = new ArrayList<>();
@@ -62,7 +61,6 @@ public final class ModuleManager {
     private final ClickGui clickGui;
 
     public ModuleManager() {
-        // combat
         register(new KillAura());
         register(new AutoCrystal());
         register(new AutoTotem());
@@ -76,7 +74,6 @@ public final class ModuleManager {
         register(new dev.bali.module.combat.ElytraMace());
         register(new dev.bali.module.combat.MaceDtap());
         register(new dev.bali.module.combat.AntiMace());
-        // movement
         register(new Sprint());
         register(new Speed());
         register(new NoSlow());
@@ -87,7 +84,7 @@ public final class ModuleManager {
         register(new dev.bali.module.movement.RocketControl());
         register(new dev.bali.module.movement.ElytraRecast());
         register(new dev.bali.module.movement.YawLock());
-        // render
+        register(new dev.bali.module.movement.Scaffold());
         register(new ESP());
         register(new Tracers());
         register(new dev.bali.module.render.Nametags());
@@ -104,7 +101,6 @@ public final class ModuleManager {
         register(new Fullbright());
         register(new NoRender());
         register(new NoParticles());
-        // player
         register(new AutoEat());
         register(new AntiHunger());
         register(new AutoTool());
@@ -113,12 +109,10 @@ public final class ModuleManager {
         register(new MiddleClick());
         register(new Replenish());
         register(new dev.bali.module.player.XPThrower());
-        // misc
         register(new FakePlayer());
         register(new PopCounter());
         register(new AutoReconnect());
         register(new dev.bali.module.misc.StashFinderBot());
-        // client
         register(clickGui = new ClickGui());
         register(new Hud());
         register(new Notifications());
@@ -159,8 +153,6 @@ public final class ModuleManager {
         for (Module m : modules) {
             if (m.getKey() == code && code != -1) m.toggleWithMessage();
         }
-        // If a bind opened a screen (ClickGUI), swallow this key press. Otherwise vanilla passes the
-        // same press to the new screen, and the GUI treats its own bind key as "close".
         if (MinecraftClient.getInstance().currentScreen != null) e.cancel();
     }
 }

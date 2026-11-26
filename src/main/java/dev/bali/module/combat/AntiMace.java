@@ -12,6 +12,7 @@ import dev.bali.setting.ColorSetting;
 import dev.bali.setting.NumberSetting;
 import dev.bali.util.ChatUtil;
 import dev.bali.util.EntityUtil;
+import dev.bali.util.FlightGuard;
 import dev.bali.util.GrimBoost;
 import dev.bali.util.InvUtil;
 import dev.bali.util.MaceUtil;
@@ -31,18 +32,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.Locale;
 import java.util.Map;
 
-/**
- * Defends against mace smashes (elytra dive-bombs, wind-charge drops, MaceDtap-style chains).
- *
- * A threat is an enemy player holding a mace, above us, coming down, whose fall will be past the
- * 1.5 blocks a smash needs by the time their eye is within reach of us. When one is due within
- * {@code React} ticks:
- * - Shield: raise a shield (offhand, or the hotbar) and keep our sent yaw on them. A shield takes 5
- *   ticks to come up, then blocks the whole smash (mace_smash is not in bypasses_shield) when the
- *   attacker is within 90 degrees of our head yaw, horizontally.
- * - Chestplate: standing in an elytra, swap a chestplate in (an elytra has no armor).
- * - Dodge: while gliding, burn a rocket sideways out of their dive line (Grim's box, see GrimBoost).
- */
 public final class AntiMace extends Module {
     private final NumberSetting range = number("Range", 32, 8, 64, 1, "Watch players within this distance");
     private final NumberSetting react = number("React", 12, 5, 30, 1, "Respond when a smash could land within this many ticks (a shield needs 5 plus your ping)");
@@ -50,6 +39,7 @@ public final class AntiMace extends Module {
     private final BoolSetting shield = bool("Shield", true, "Raise a shield facing the attacker");
     private final BoolSetting chestplate = bool("Chestplate", true, "Standing in an elytra: swap a chestplate in");
     private final BoolSetting dodge = bool("Dodge", true, "Gliding: rocket sideways out of the dive");
+    private final BoolSetting avoid = bool("Avoid Blocks", true, "Dodge: never into a wall or the ground, take the nearest clear way instead");
     private final BoolSetting alert = bool("Alert", true, "Chat warning when someone dives at you");
     private final ColorSetting color = color("Color", 0x60FF2020, "Attacker highlight");
 
@@ -59,17 +49,14 @@ public final class AntiMace extends Module {
     }
 
     private final Map<Integer, Track> tracks = new HashMap<>();
-    /**
-     * Entity id -> until when we count them as a mace user. Divers usually hold a totem and swap to
-     * the mace only for the hit, so holding one right now misses them; a smash they land (on us or
-     * anyone we can see) gives them away. Written from the network thread.
-     */
     private final Map<Integer, Long> maceUsers = new ConcurrentHashMap<>();
     private static final long MACE_MEMORY_MS = 5 * 60_000;
     private PlayerEntity threat;
     private double threatEta;
     private boolean shielding, alerted;
     private int restoreSlot = -1, calmTicks, rocketTimer;
+    private Vec3d dodgePrev;
+    private boolean dodgeSteered;
 
     public AntiMace() {
         super("AntiMace", "Shields, armors up or dodges when someone mace-dives at you", Category.COMBAT);
@@ -78,7 +65,6 @@ public final class AntiMace extends Module {
     @Override
     public String getInfo() { return threat == null ? null : String.format(Locale.ROOT, "%s %.0ft", threat.getGameProfile().name(), threatEta); }
 
-    /** The attacker we are reacting to, or null. */
     public PlayerEntity threat() { return isEnabled() ? threat : null; }
 
     @Override
@@ -88,7 +74,6 @@ public final class AntiMace extends Module {
         threat = null;
     }
 
-    // runs after the other modules so a dodge overrides their flight request this tick
     @EventHandler(priority = -100)
     private void onTick(Events.TickPre e) {
         if (nullCheck()) return;
@@ -112,11 +97,9 @@ public final class AntiMace extends Module {
             threat = null;
             lowerShield();
         } else if (threat != null && shielding) {
-            faceAttacker(threat); // keep the shield on them for a few ticks after they land or hit
+            faceAttacker(threat);
         }
     }
-
-    // ------------------------------------------------------------------ detection
 
     private void updateTracks() {
         Map<Integer, Track> seen = new HashMap<>();
@@ -126,15 +109,14 @@ public final class AntiMace extends Module {
             Vec3d pos = p.getEntityPos();
             if (tr.prev != null) {
                 Vec3d raw = pos.subtract(tr.prev);
-                if (raw.lengthSquared() > 25) raw = tr.vel; // teleport
+                if (raw.lengthSquared() > 25) raw = tr.vel;
                 tr.vel = tr.vel.multiply(0.4).add(raw.multiply(0.6));
-                // the fall the server is building for them: down moves add, up moves and landing reset
                 if (p.isOnGround() || raw.y > 0.01) tr.fall = 0;
                 else if (raw.y < 0) tr.fall -= raw.y;
             }
             tr.prev = pos;
             seen.put(p.getId(), tr);
-            isMaceUser(p); // remembers anyone we catch holding one, even for a tick
+            isMaceUser(p);
         }
         tracks.clear();
         tracks.putAll(seen);
@@ -158,7 +140,7 @@ public final class AntiMace extends Module {
     }
 
     @EventHandler
-    private void onJoin(Events.Join e) { maceUsers.clear(); } // entity ids are per server
+    private void onJoin(Events.Join e) { maceUsers.clear(); }
 
     private PlayerEntity findThreat() {
         PlayerEntity best = null;
@@ -182,7 +164,7 @@ public final class AntiMace extends Module {
             if (dist <= 3.2) eta = 0;
             else if (closing < 0.05) continue;
             else eta = (dist - 3.2) / closing;
-            if (tr.fall + Math.max(0, -tr.vel.y) * eta <= 1.5) continue; // not a smash yet
+            if (tr.fall + Math.max(0, -tr.vel.y) * eta <= 1.5) continue;
             if (eta < bestEta) {
                 bestEta = eta;
                 best = p;
@@ -192,15 +174,11 @@ public final class AntiMace extends Module {
         return best;
     }
 
-    // ------------------------------------------------------------------ responses
-
     private void respond(PlayerEntity t) {
         ElytraMace em = Bali.MODULES.get(ElytraMace.class);
-        // our own smash is already falling: it needs the mace in hand and the chestplate on
         if (em.striking()) return;
         boolean gliding = mc.player.isGliding();
 
-        // ElytraMace stands down while we defend (see ElytraMace.onTick), so this runs mid-hunt too
         if (chestplate.on() && !gliding && MaceUtil.wearingElytra()
             && !Bali.MODULES.get(dev.bali.module.movement.ElytraRecast.class).busy()) {
             int chest = MaceUtil.findChestplate();
@@ -209,7 +187,7 @@ public final class AntiMace extends Module {
 
         if (gliding) {
             if (dodge.on()) dodgeFrom(t);
-            return; // can't block while gliding
+            return;
         }
         if (shield.on()) raiseShield(t);
     }
@@ -217,7 +195,7 @@ public final class AntiMace extends Module {
     private void raiseShield(PlayerEntity t) {
         faceAttacker(t);
         if (mc.player.isUsingItem() && mc.player.getActiveItem().isOf(Items.SHIELD)) {
-            mc.options.useKey.setPressed(true); // keep holding it
+            mc.options.useKey.setPressed(true);
             return;
         }
         Hand hand;
@@ -230,18 +208,17 @@ public final class AntiMace extends Module {
             InvUtil.select(slot);
             hand = Hand.MAIN_HAND;
         }
-        if (mc.player.isUsingItem()) mc.interactionManager.stopUsingItem(mc.player); // eating etc.
+        if (mc.player.isUsingItem()) mc.interactionManager.stopUsingItem(mc.player);
         mc.interactionManager.interactItem(mc.player, hand);
         mc.options.useKey.setPressed(true);
         shielding = true;
         Recorder.log("ANTIMACE", "shield up (" + hand + ")");
     }
 
-    /** Server yaw on the attacker: the shield blocks within 90 degrees of the head yaw, horizontally. */
     private void faceAttacker(PlayerEntity t) {
         float yaw = RotationUtil.rotationsTo(mc.player.getEyePos(), t.getEyePos())[0];
         Vec3d d = t.getEntityPos().subtract(mc.player.getEntityPos());
-        if (d.horizontalLengthSquared() < 0.01) yaw = mc.player.getYaw(); // straight above: any yaw blocks
+        if (d.horizontalLengthSquared() < 0.01) yaw = mc.player.getYaw();
         Bali.ROTATIONS.rotate(yaw, mc.player.getPitch(), RotationPriority.ANTI_MACE, null);
     }
 
@@ -258,7 +235,6 @@ public final class AntiMace extends Module {
 
     private void dodgeFrom(PlayerEntity t) {
         Track tr = tracks.get(t.getId());
-        // sideways to their approach, away from the side they are on
         Vec3d approach = tr != null && tr.vel.horizontalLengthSquared() > 0.01 ? tr.vel : mc.player.getEntityPos().subtract(t.getEntityPos());
         Vec3d side = new Vec3d(-approach.z, 0, approach.x);
         if (side.lengthSquared() < 1e-6) side = new Vec3d(1, 0, 0);
@@ -266,7 +242,17 @@ public final class AntiMace extends Module {
         Vec3d offset = mc.player.getEntityPos().subtract(t.getEntityPos());
         if (side.dotProduct(offset) < 0) side = side.multiply(-1);
         Vec3d want = side.multiply(1.7).add(0, -0.3, 0);
+        if (avoid.on()) {
+            Vec3d lean = dodgePrev != null ? dodgePrev : new Vec3d(offset.x, 0, offset.z);
+            Vec3d got = FlightGuard.steer(want, 12, false, lean);
+            boolean steered = got != want;
+            if (steered && !dodgeSteered) Recorder.log("ANTIMACE", String.format(Locale.ROOT, "dodge blocked that way, going (%.2f %.2f %.2f)", got.x, got.y, got.z));
+            dodgeSteered = steered;
+            dodgePrev = steered ? got : null;
+            want = got;
+        }
         float[] r = GrimBoost.lookAlong(want);
+        GrimBoost.holdRocket();
         if (GrimBoost.rocketAttached()) {
             GrimBoost.requestVelocity(want);
             GrimBoost.face(r[0], r[1], RotationPriority.ANTI_MACE, null);

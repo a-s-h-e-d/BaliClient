@@ -7,7 +7,6 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-/** Drops vanilla's "Diamond x64 ... and 22 more" lines when the grid preview replaces them. */
 @Mixin(ContainerComponent.class)
 public abstract class ShulkerTextMixin {
     @Inject(method = "appendTooltip", at = @At("HEAD"), cancellable = true)

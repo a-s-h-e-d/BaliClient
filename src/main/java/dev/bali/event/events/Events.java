@@ -9,29 +9,23 @@ import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.network.packet.Packet;
 import net.minecraft.util.math.Vec3d;
 
-/** All client events in one place. */
 public final class Events {
     private Events() {}
 
-    /** Start of the client tick, before input handling and the player tick. Request rotations here. */
     public static final class TickPre { public static final TickPre INSTANCE = new TickPre(); }
 
-    /** End of the client tick. */
     public static final class TickPost { public static final TickPost INSTANCE = new TickPost(); }
 
-    /** Outgoing packet, before it is written. Cancellable. */
     public static final class PacketSend extends Cancellable {
         public final Packet<?> packet;
         public PacketSend(Packet<?> packet) { this.packet = packet; }
     }
 
-    /** Incoming packet. Fired on the NETTY thread: don't mutate the world here without mc.execute(). Cancellable. */
     public static final class PacketReceive extends Cancellable {
         public final Packet<?> packet;
         public PacketReceive(Packet<?> packet) { this.packet = packet; }
     }
 
-    /** World render pass. Use world coordinates with {@link dev.bali.util.Render3D}. */
     public static final class Render3D {
         public final MatrixStack matrices;
         public final float tickDelta;
@@ -52,7 +46,6 @@ public final class Events {
         }
     }
 
-    /** Keyboard or mouse button. action: 0 release, 1 press, 2 repeat. */
     public static final class Key extends Cancellable {
         public final int key;
         public final int action;
@@ -64,7 +57,6 @@ public final class Events {
         }
     }
 
-    /** Local player self-move. Replace {@link #movement} to change it. */
     public static final class Move {
         public final MovementType type;
         public Vec3d movement;
@@ -95,7 +87,6 @@ public final class Events {
         }
     }
 
-    /** Local player is about to attack an entity through the interaction manager. */
     public static final class Attack extends Cancellable {
         public final Entity target;
         public Attack(Entity target) { this.target = target; }

@@ -19,7 +19,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
-/** Searchable grid of every block. Click to toggle; selected blocks are listed first. Esc to go back. */
 public final class BlockPickerScreen extends Screen {
     private static final int CELL = 20;
 

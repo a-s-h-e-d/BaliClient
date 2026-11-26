@@ -11,16 +11,6 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-/**
- * Move-fix, input half. While a silent rotation is pending, the keys themselves are remapped to
- * whichever of the 8 directions relative to the server yaw best matches what was pressed relative
- * to the camera.
- *
- * It has to be the real input, not just the velocity: 1.21.2+ clients send their key state to the
- * server (PlayerInputC2SPacket) and Grim simulates movement with exactly those keys and the yaw
- * we sent. It also makes vanilla's own sprint rule (forward key required) apply to the remapped
- * keys, so we never sprint sideways as far as the server can tell.
- */
 @Mixin(KeyboardInput.class)
 public abstract class MoveFixInputMixin {
     @Inject(method = "tick", at = @At("TAIL"))
@@ -28,14 +18,14 @@ public abstract class MoveFixInputMixin {
         MinecraftClient mc = MinecraftClient.getInstance();
         if (mc.player == null || Bali.ROTATIONS == null) return;
         bali$remap(mc);
-        // ElytraRecast: no keys while its inventory clicks go out (Grim MultiActionsC)
+        KeyboardInput input = (KeyboardInput) (Object) this;
+        input.playerInput = Bali.MODULES.get(dev.bali.module.movement.Scaffold.class).filterInput(input.playerInput);
         KeyboardInput self = (KeyboardInput) (Object) this;
         PlayerInput filtered = Bali.MODULES.get(dev.bali.module.movement.ElytraRecast.class).filterInput(self.playerInput);
         if (filtered != null) {
             self.playerInput = filtered;
             self.movementVector = Vec2f.ZERO;
         }
-        // ClickGate (ElytraMace swaps etc.): same rule for any blind click; also tracks what we last sent
         PlayerInput gated = dev.bali.util.ClickGate.filter(self.playerInput);
         if (gated != self.playerInput) {
             self.playerInput = gated;
@@ -52,7 +42,6 @@ public abstract class MoveFixInputMixin {
         int s = (in.left() ? 1 : 0) - (in.right() ? 1 : 0);
         if (f == 0 && s == 0) return;
 
-        // world-space direction the player wants (degrees), using the real camera yaw
         double wanted = mc.player.getYaw() + Math.toDegrees(Math.atan2(-s, f));
         double bestDiff = Double.MAX_VALUE;
         int bestF = 0, bestS = 0;

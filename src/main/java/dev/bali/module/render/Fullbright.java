@@ -21,7 +21,6 @@ public final class Fullbright extends Module {
 
     private boolean isGamma() { return mode != null && mode.is(Mode.Gamma); }
 
-    /** Read by the lightmap mixin. */
     public boolean gammaActive() { return isEnabled() && isGamma(); }
 
     @EventHandler

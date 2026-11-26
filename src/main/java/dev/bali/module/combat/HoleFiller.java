@@ -29,10 +29,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-/**
- * Fills the safe holes next to enemies with obsidian, so they have nowhere to hide from crystals.
- * Holes closest to an enemy go first.
- */
 public final class HoleFiller extends Module {
     private final NumberSetting targetRange = number("Target Range", 3, 1, 8, 0.5, "Fill holes within this distance of an enemy");
     private final BoolSetting allHoles = bool("All Holes", false, "Fill every hole in reach, not just those near enemies");
@@ -72,7 +68,6 @@ public final class HoleFiller extends Module {
         pending = placer.placeAll(targets(), slot, rotate.on(), strict.on(), range.getD(), bpt.getI(), RotationPriority.HOLE_FILLER);
     }
 
-    /** Hole cells in reach that should be filled, closest to an enemy first. */
     private List<BlockPos> targets() {
         List<PlayerEntity> enemies = new ArrayList<>();
         for (PlayerEntity p : mc.world.getPlayers())
@@ -94,7 +89,6 @@ public final class HoleFiller extends Module {
                     List<BlockPos> cells = HoleUtil.holeCells(p, doubles.on());
                     if (cells.isEmpty()) continue;
                     seen.addAll(cells);
-                    // our own hole, or someone already standing in it: nothing to do
                     if (cells.stream().anyMatch(mine::contains) || cells.stream().anyMatch(q -> !BlockUtil.noEntityCollision(q))) continue;
                     double d = Double.MAX_VALUE;
                     for (BlockPos q : cells) {

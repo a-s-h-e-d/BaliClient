@@ -11,10 +11,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-/**
- * Minimal annotation-driven event bus. Listener arrays are copy-on-write, so posting
- * (which happens on the netty thread for incoming packets) never takes a lock.
- */
 public final class EventBus {
     private record Listener(Object owner, Method method, MethodHandle handle, int priority) {}
 

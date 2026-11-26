@@ -10,17 +10,6 @@ import net.minecraft.network.packet.c2s.play.PlayerMoveC2SPacket;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
 
-/**
- * Server-side ("silent") rotations.
- *
- * Modules call {@link #rotate} during {@code TickPre}. The highest-priority request of the tick
- * is applied only while the movement packet is built, so the server sees the rotation but the
- * camera does not move. The request's callback runs right after that packet is sent, which is when
- * Grim considers the new rotation current: place/attack packets belong in the callback.
- *
- * With move-fix on, the player's movement for that tick is computed with the server yaw (and the
- * WASD input remapped to the closest matching direction) so Grim's movement simulation matches.
- */
 public final class RotationManager {
     private static final MinecraftClient mc = MinecraftClient.getInstance();
 
@@ -32,13 +21,10 @@ public final class RotationManager {
     private float serverYaw, serverPitch;
     private int ticksSinceRotate = 100;
 
-    // ---- API ----
-
     public void rotate(float yaw, float pitch, int priority, Runnable callback) {
         if (pending == null || priority >= pending.priority) {
             pending = new Request(yaw, MathHelper.clamp(pitch, -90f, 90f), priority, callback);
         } else if (callback != null) {
-            // lower priority loses the rotation; let it know nothing happened by not running it
         }
     }
 
@@ -49,14 +35,11 @@ public final class RotationManager {
 
     public boolean hasPending() { return pending != null; }
 
-    /** Rotation the server currently believes we have. */
     public float serverYaw() { return serverYaw; }
     public float serverPitch() { return serverPitch; }
 
-    /** True if a rotation was sent within the last {@code ticks} ticks. */
     public boolean rotatedRecently(int ticks) { return ticksSinceRotate <= ticks; }
 
-    /** Yaw that the movement code should use this tick, or NaN to use the player's own. */
     public float movementYaw() {
         if (pending == null || mc.player == null) return Float.NaN;
         Rotations r = Bali.MODULES.get(Rotations.class);
@@ -64,15 +47,12 @@ public final class RotationManager {
         return fixedYaw(pending.yaw);
     }
 
-    /** Pitch the movement code (elytra physics) should use this tick, or NaN to use the player's own. */
     public float movementPitch() {
         if (pending == null || mc.player == null) return Float.NaN;
         Rotations r = Bali.MODULES.get(Rotations.class);
         if (!r.moveFix.on()) return Float.NaN;
         return fixedPitch(pending.pitch);
     }
-
-    // ---- hooks (ClientPlayerEntityMixin) ----
 
     public void preSend() {
         if (pending == null || mc.player == null) return;
@@ -89,8 +69,6 @@ public final class RotationManager {
         Request done = active;
         active = null;
         ticksSinceRotate = 0;
-        // Run the action while the player still has the server rotation, so anything that reads
-        // the player's look (item use packets, client raycasts) matches what the server has.
         if (done.callback != null) {
             try {
                 done.callback.run();
@@ -110,14 +88,9 @@ public final class RotationManager {
 
     @EventHandler(priority = -1000)
     private void onTickPost(Events.TickPost e) {
-        // dropped (e.g. dead, spectating another entity) - don't carry it into next tick
         pending = null;
     }
 
-    /**
-     * A kick or server switch can land between a module queueing a rotation and the move packet that
-     * sends it; without this the old click (aimed at a block in the previous world) fires on join.
-     */
     @EventHandler(priority = 1000)
     private void onJoin(Events.Join e) {
         pending = null;
@@ -138,9 +111,6 @@ public final class RotationManager {
         }
     }
 
-    // ---- sensitivity GCD ----
-
-    /** Keep yaw continuous with the last sent yaw and snap the delta to the mouse sensitivity grid. */
     private float fixedYaw(float yaw) {
         float delta = MathHelper.wrapDegrees(yaw - serverYaw);
         return serverYaw + snap(delta);

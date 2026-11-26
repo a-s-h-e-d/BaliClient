@@ -23,11 +23,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
-/**
- * Player name plates drawn on the HUD layer: always readable, visible through walls, a constant
- * size, with health (incl. absorption), ping, totem pops, distance, and the player's armor and held
- * items with durability. Replaces the vanilla plate while enabled.
- */
 public final class Nametags extends Module {
     private final NumberSetting scale = number("Scale", 1.0, 0.5, 3.0, 0.05, "Tag size");
     private final BoolSetting distanceScale = bool("Distance Scale", true, "Shrink far tags (down to half size)");
@@ -74,7 +69,7 @@ public final class Nametags extends Module {
             if (s == null) continue;
             tags.add(new Tag(p, s, d));
         }
-        tags.sort((a, b) -> Double.compare(b.dist, a.dist)); // far first so near tags draw on top
+        tags.sort((a, b) -> Double.compare(b.dist, a.dist));
         for (Tag t : tags) draw(ctx, t);
     }
 
@@ -84,7 +79,6 @@ public final class Nametags extends Module {
         float s = scale.getF();
         if (distanceScale.on()) s *= (float) MathHelper.clamp(12.0 / Math.max(t.dist, 0.1), 0.5, 1.0);
 
-        // ---- text line
         StringBuilder sb = new StringBuilder();
         if (ping.on()) {
             PlayerListEntry entry = mc.getNetworkHandler() != null ? mc.getNetworkHandler().getPlayerListEntry(p.getUuid()) : null;
@@ -114,7 +108,6 @@ public final class Nametags extends Module {
         if (bg != 0) ctx.fill(-tw / 2 - 2, -11, tw / 2 + 2, 0, bg);
         ctx.drawTextWithShadow(tr, text, -tw / 2, -10, nameColor);
 
-        // ---- items: main hand, helmet, chest, legs, boots, off hand
         if (armor.on()) {
             List<ItemStack> items = new ArrayList<>(6);
             for (ItemStack st : new ItemStack[]{p.getMainHandStack(), p.getEquippedStack(EquipmentSlot.HEAD),

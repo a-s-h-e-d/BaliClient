@@ -7,7 +7,6 @@ import net.minecraft.util.math.Vec3d;
 public final class RotationUtil {
     private RotationUtil() {}
 
-    /** {yaw, pitch} to look from {@code from} at {@code to}. */
     public static float[] rotationsTo(Vec3d from, Vec3d to) {
         double dx = to.x - from.x;
         double dy = to.y - from.y;
@@ -18,7 +17,6 @@ public final class RotationUtil {
         return new float[]{MathHelper.wrapDegrees(yaw), MathHelper.clamp(pitch, -90f, 90f)};
     }
 
-    /** Closest point inside {@code box} to {@code eye}. */
     public static Vec3d closestPoint(Box box, Vec3d eye) {
         return new Vec3d(
             MathHelper.clamp(eye.x, box.minX, box.maxX),
@@ -26,18 +24,12 @@ public final class RotationUtil {
             MathHelper.clamp(eye.z, box.minZ, box.maxZ));
     }
 
-    /** Angle in degrees between the given rotation and the direction to {@code target}. */
     public static double angleTo(float yaw, float pitch, Vec3d eye, Vec3d target) {
         Vec3d look = Vec3d.fromPolar(pitch, yaw);
         Vec3d dir = target.subtract(eye).normalize();
         return Math.toDegrees(Math.acos(MathHelper.clamp(look.dotProduct(dir), -1.0, 1.0)));
     }
 
-    /**
-     * Distance along the ray from {@code eye} in direction {@code dir} (any length) to where it
-     * enters {@code box}; 0 if the eye is inside, -1 if it misses. Blocks in between are ignored,
-     * like Grim's reach and place ray checks.
-     */
     public static double rayBox(Vec3d eye, Vec3d dir, Box box) {
         double len = dir.length();
         if (len < 1e-9) return -1;
@@ -57,7 +49,6 @@ public final class RotationUtil {
         return near;
     }
 
-    /** {@link #rayBox(Vec3d, Vec3d, Box)} for a rotation. */
     public static double rayBox(Vec3d eye, float yaw, float pitch, Box box) {
         return rayBox(eye, Vec3d.fromPolar(pitch, yaw), box);
     }

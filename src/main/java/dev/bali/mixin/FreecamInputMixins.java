@@ -9,7 +9,6 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-/** While freecam is on the player receives no movement input (keys move the camera instead). */
 @Mixin(KeyboardInput.class)
 public abstract class FreecamInputMixins {
     @Inject(method = "tick", at = @At("TAIL"))

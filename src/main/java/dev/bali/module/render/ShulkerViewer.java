@@ -22,11 +22,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
-/**
- * Hover a shulker box (or any item holding a container, like a picked-up chest) in any inventory or
- * container screen to see its full contents as a slot grid instead of vanilla's 5-line text list.
- * Purely client-side: the contents are already in the item data the server sends.
- */
 public final class ShulkerViewer extends Module {
     public enum Mode { Grid, Compact }
 
@@ -48,7 +43,6 @@ public final class ShulkerViewer extends Module {
 
     public boolean hidesText() { return hideText.on(); }
 
-    /** Called from the ItemStack mixin; empty when this stack shouldn't get a preview. */
     public Optional<TooltipData> preview(ItemStack stack) {
         ContainerComponent c = stack.get(DataComponentTypes.CONTAINER);
         boolean shulker = stack.getItem() instanceof BlockItem bi && bi.getBlock() instanceof ShulkerBoxBlock;
@@ -86,9 +80,9 @@ public final class ShulkerViewer extends Module {
     private static int colorOf(ItemStack stack) {
         if (stack.getItem() instanceof BlockItem bi && bi.getBlock() instanceof ShulkerBoxBlock sb) {
             DyeColor d = sb.getColor();
-            return d == null ? 0x976997 : d.getEntityColor() & 0xFFFFFF; // undyed shulker purple
+            return d == null ? 0x976997 : d.getEntityColor() & 0xFFFFFF;
         }
-        return 0x8B6A3E; // chest brown
+        return 0x8B6A3E;
     }
 
     public record Preview(List<ItemStack> stacks, int cols, int rgb) implements TooltipData {}

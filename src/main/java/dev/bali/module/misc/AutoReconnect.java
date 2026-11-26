@@ -10,7 +10,6 @@ import net.minecraft.client.gui.screen.multiplayer.MultiplayerScreen;
 import net.minecraft.client.network.ServerAddress;
 import net.minecraft.client.network.ServerInfo;
 
-/** Adds a Reconnect button to the disconnect screen; when enabled, reconnects after a delay. */
 public final class AutoReconnect extends Module {
     public final NumberSetting delay = number("Delay", 5, 1, 120, 1, "Seconds before reconnecting");
 

@@ -12,10 +12,6 @@ import net.minecraft.fluid.Fluids;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Vec3d;
 
-/**
- * W-lock for highway travel. Everything it does is something a player could do with the keyboard
- * (holding W, pressing space, turning), so it is Grim-safe.
- */
 public final class AutoWalk extends Module {
     private final BoolSetting yawSnap = bool("Yaw Snap", true, "Snap to the nearest 45 degrees once when enabled (highways)");
     private final BoolSetting jump = bool("Jump Obstacles", true, "Jump when walking into a 1-block step");
@@ -65,13 +61,11 @@ public final class AutoWalk extends Module {
         holding = true;
 
         if (go && jump.on() && mc.player.isOnGround() && mc.player.horizontalCollision && !mc.player.isSneaking()) {
-            // tap jump for one tick through the input, like a player would; vanilla does the jump
             mc.options.jumpKey.setPressed(true);
             jumpTicks = 2;
         }
     }
 
-    /** Looks at the ground just ahead of us. Returns a reason to stop, or null if it's fine. */
     private String dangerAhead() {
         Vec3d dir = Vec3d.fromPolar(0, mc.player.getYaw()).normalize();
         Vec3d front = mc.player.getEntityPos().add(dir.multiply(0.9));

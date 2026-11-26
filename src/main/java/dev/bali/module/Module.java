@@ -15,7 +15,6 @@ import java.util.List;
 
 public abstract class Module {
     protected static final MinecraftClient mc = MinecraftClient.getInstance();
-
     public final String name;
     public final String description;
     public final Category category;
@@ -35,7 +34,6 @@ public abstract class Module {
 
     protected void onDisable() {}
 
-    /** Short suffix shown in the array list, e.g. the current mode. */
     public String getInfo() { return null; }
 
     public final boolean isEnabled() { return enabled; }
@@ -54,7 +52,6 @@ public abstract class Module {
         }
     }
 
-    /** Toggle and print feedback, used by keybinds and commands. */
     public final void toggleWithMessage() {
         toggle();
         if (Bali.MODULES != null && this != Bali.MODULES.clickGui() && Bali.MODULES.clickGui().toggleMessages.on()) {
@@ -70,8 +67,6 @@ public abstract class Module {
     protected static boolean nullCheck() {
         return mc.player == null || mc.world == null || mc.interactionManager == null;
     }
-
-    // ---- setting helpers ----
 
     protected <S extends Setting<?>> S add(S setting) {
         settings.add(setting);

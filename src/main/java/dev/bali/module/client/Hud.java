@@ -35,10 +35,8 @@ public final class Hud extends Module {
     private final BoolSetting lag = bool("Lag Notifier", true, "Warn when the server stops responding");
     private final BoolSetting setbacks = bool("Setbacks", false, "Count server setbacks (useful when tuning vs Grim)");
     private final NumberSetting scale = number("Scale", 1.0, 0.5, 2.0, 0.05, "Size of the HUD");
-
     private double lastX, lastZ, kmh;
 
-    // crystals/s: a crystal counts when the server removes one we hit (so misses/ghost hits don't count)
     private final java.util.Map<Integer, Long> hitCrystals = new java.util.concurrent.ConcurrentHashMap<>();
     private final java.util.concurrent.ConcurrentLinkedDeque<Long> breaks = new java.util.concurrent.ConcurrentLinkedDeque<>();
     private static final long WINDOW_MS = 2000;
@@ -57,7 +55,6 @@ public final class Hud extends Module {
         for (int id : p.getEntityIds()) if (hitCrystals.remove(id) != null) breaks.add(now);
     }
 
-    /** Broken crystals per second over the last 2 seconds; -1 when idle for 10 s. */
     public double crystalsPerSecond() {
         long now = System.currentTimeMillis();
         hitCrystals.values().removeIf(t -> now - t > 3000);
@@ -124,7 +121,6 @@ public final class Hud extends Module {
             }
         }
 
-        // bottom-right info stack
         List<String> info = new ArrayList<>();
         if (setbacks.on()) info.add("Setbacks " + Formatting.WHITE + Bali.SERVER.setbacks());
         if (crystals.on()) {

@@ -12,7 +12,6 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-/** Moves the render camera to the freecam position. The player entity is untouched. */
 @Mixin(Camera.class)
 public abstract class FreecamMixins {
     @Shadow protected abstract void setPos(Vec3d pos);
@@ -26,7 +25,6 @@ public abstract class FreecamMixins {
         setRotation(f.yaw(tickProgress), f.pitch(tickProgress));
     }
 
-    /** Free look: the camera takes its own rotation; third person then orbits around that. */
     @com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation(method = "update", at = {
         @At(value = "INVOKE", target = "Lnet/minecraft/client/render/Camera;setRotation(FF)V", ordinal = 0),
         @At(value = "INVOKE", target = "Lnet/minecraft/client/render/Camera;setRotation(FF)V", ordinal = 1)})
@@ -35,7 +33,6 @@ public abstract class FreecamMixins {
         else original.call(camera, yaw, pitch);
     }
 
-    /** Treat freecam as third person so your own body is rendered where you left it. */
     @Inject(method = "isThirdPerson", at = @At("HEAD"), cancellable = true)
     private void bali$showBody(CallbackInfoReturnable<Boolean> cir) {
         if (Freecam.active() != null) cir.setReturnValue(true);

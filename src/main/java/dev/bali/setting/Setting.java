@@ -32,7 +32,6 @@ public abstract class Setting<T> {
         return (S) this;
     }
 
-    /** Parses user text (from the .set command). Returns false if invalid. */
     public abstract boolean parse(String text);
 
     public abstract JsonElement toJson();

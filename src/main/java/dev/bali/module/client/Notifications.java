@@ -19,7 +19,6 @@ import net.minecraft.util.Formatting;
 import java.util.ArrayList;
 import java.util.List;
 
-/** On-screen toasts for totem pops (yours and others') and deaths. */
 public final class Notifications extends Module {
     public enum Position { Center, Top }
 
@@ -33,7 +32,6 @@ public final class Notifications extends Module {
     private static final int MAX = 5;
     private static final long FADE_MS = 250;
 
-    /** self toasts render the live totem count, since the inventory update lands a tick after the pop packet */
     private record Toast(String text, int pops, boolean self, long start) {}
 
     private final List<Toast> toasts = new ArrayList<>();
@@ -49,7 +47,6 @@ public final class Notifications extends Module {
     @Override
     protected void onDisable() { toasts.clear(); }
 
-    /** Toast from another module (e.g. BreakESP). Does nothing while Notifications is off. */
     public void alert(String text, boolean ping) {
         if (!isEnabled()) return;
         push(new Toast(text, 0, false, System.currentTimeMillis()));
@@ -78,7 +75,6 @@ public final class Notifications extends Module {
     private void onJoin(Events.Join e) { toasts.clear(); }
 
     private void push(Toast t) {
-        // a newer self pop replaces the older one instead of stacking
         if (t.self) toasts.removeIf(Toast::self);
         toasts.add(0, t);
         while (toasts.size() > MAX) toasts.remove(toasts.size() - 1);

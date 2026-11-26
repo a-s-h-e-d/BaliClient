@@ -16,10 +16,6 @@ import net.minecraft.util.math.Box;
 
 import java.util.Set;
 
-/**
- * Marks the block(s) each player is standing in. Green: every block around their feet is
- * blast-proof, so crystals can't be placed at their feet. Red: there is a gap (or no surround at all).
- */
 public final class FootESP extends Module {
     private final NumberSetting range = number("Range", 16, 4, 64, 1, "Max distance to players");
     private final BoolSetting self = bool("Self", false, "Also show your own feet");
@@ -32,7 +28,6 @@ public final class FootESP extends Module {
         super("FootESP", "Shows where players are standing and whether their feet are safe", Category.RENDER);
     }
 
-    /** True if every block around this player's feet is blast-proof. */
     public boolean safe(PlayerEntity p) {
         return HoleUtil.surrounded(HoleUtil.footprint(p));
     }

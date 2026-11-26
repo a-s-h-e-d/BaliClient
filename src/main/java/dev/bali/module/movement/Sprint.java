@@ -7,7 +7,6 @@ import dev.bali.module.Module;
 import dev.bali.setting.EnumSetting;
 import dev.bali.util.EntityUtil;
 
-/** Legit: sprint only when vanilla would allow it (forward). Omni: any direction (Grim flags this). */
 public final class Sprint extends Module {
     public enum Mode { Legit, Omni }
 
@@ -23,10 +22,10 @@ public final class Sprint extends Module {
     @EventHandler
     private void onTick(Events.TickPre e) {
         if (mc.player.isSneaking() || mc.player.getHungerManager().getFoodLevel() <= 6 || mc.player.horizontalCollision) return;
-        if (mc.player.isGliding()) return; // ElytraFly manages sprint while flying
-        if (dev.bali.Bali.MODULES.get(dev.bali.module.combat.ElytraMace.class).busy()) return; // its smashes must not be sprint hits (no crit)
-        if (dev.bali.Bali.MODULES.get(ElytraRecast.class).busy()) return; // Grim flags its swap clicks while sprinting
-        if (dev.bali.util.ClickGate.holding()) return; // an inventory click is waiting for sprint to be off
+        if (mc.player.isGliding()) return;
+        if (dev.bali.Bali.MODULES.get(dev.bali.module.combat.ElytraMace.class).busy()) return;
+        if (dev.bali.Bali.MODULES.get(ElytraRecast.class).busy()) return;
+        if (dev.bali.util.ClickGate.holding()) return;
         if (mode.is(Mode.Legit)) {
             if (mc.player.input.hasForwardMovement() && !mc.player.isUsingItem()) mc.options.sprintKey.setPressed(true);
         } else if (EntityUtil.isMoving()) {

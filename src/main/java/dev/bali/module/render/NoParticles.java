@@ -10,7 +10,6 @@ import net.minecraft.particle.ParticleEffect;
 import net.minecraft.particle.ParticleType;
 import net.minecraft.particle.ParticleTypes;
 
-/** Hides particles by category. Also hides rain/snow rendering (sound stays). */
 public final class NoParticles extends Module {
     public final BoolSetting all = bool("All", false, "Hide every particle");
     public final BoolSetting explosions = bool("Explosions", true, "Crystal / TNT explosion flash and smoke");
@@ -27,7 +26,6 @@ public final class NoParticles extends Module {
 
     private static NoParticles get() { return Bali.MODULES == null ? null : Bali.MODULES.get(NoParticles.class); }
 
-    /** Called from ParticleManagerMixin for every particle effect spawn and emitter. */
     public static boolean hides(ParticleEffect effect) {
         NoParticles m = get();
         if (m == null || !m.isEnabled()) return false;
@@ -42,14 +40,12 @@ public final class NoParticles extends Module {
         return false;
     }
 
-    /** Particles constructed directly (block dust) never pass through a ParticleEffect. */
     public static boolean hides(Particle particle) {
         NoParticles m = get();
         if (m == null || !m.isEnabled()) return false;
         return m.all.on() || m.blockBreak.on() && particle instanceof BlockDustParticle;
     }
 
-    /** Explosion smoke/poof from the explosion packet's block particle pool. */
     public static boolean hidesExplosionSmoke() {
         NoParticles m = get();
         return m != null && m.isEnabled() && (m.all.on() || m.explosions.on());

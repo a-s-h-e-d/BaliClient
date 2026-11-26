@@ -24,11 +24,6 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
 
-/**
- * Shows blocks other players are mining as a box that grows from the block's center as the break
- * progresses. The server sends every nearby player's mining stage (0-9) as it changes; it never
- * sends your own. Between stages the box keeps growing at the pace of the last stage.
- */
 public final class BreakESP extends Module {
     private final NumberSetting range = number("Range", 32, 4, 64, 1, "Max distance to show breaks (the server sends up to 32)");
     private final ColorSetting startColor = color("Start", 0x4040FF40, "Color when the break starts");
@@ -38,7 +33,6 @@ public final class BreakESP extends Module {
     private final BoolSetting names = bool("Names", true, "Show who is breaking and how far along");
     private final BoolSetting alert = bool("Alert", true, "Notification when someone breaks a block next to you (needs Notifications)");
 
-    /** Vanilla drops break overlays after 400 ticks without an update; same here. */
     private static final long TIMEOUT_MS = 20_000;
 
     private static final class Break {
@@ -46,7 +40,7 @@ public final class BreakESP extends Module {
         BlockPos pos;
         int stage;
         long stageStart;
-        long stageMs = -1; // measured time per stage, -1 until the second stage arrives
+        long stageMs = -1;
         long lastUpdate;
         String name;
         boolean alerted;
@@ -74,7 +68,6 @@ public final class BreakESP extends Module {
         mc.execute(() -> update(id, pos, stage, System.currentTimeMillis()));
     }
 
-    /** Public so the game test can feed it stages without a second player. */
     public void update(int id, BlockPos pos, int stage, long now) {
         if (mc.world == null) return;
         if (stage < 0 || stage > 9) {
@@ -92,7 +85,7 @@ public final class BreakESP extends Module {
             b.stageMs = (now - b.stageStart) / (stage - b.stage);
             b.stage = stage;
             b.stageStart = now;
-        } else if (stage < b.stage) { // restarted on the same block
+        } else if (stage < b.stage) {
             b.stage = stage;
             b.stageStart = now;
             b.stageMs = -1;
@@ -107,14 +100,12 @@ public final class BreakESP extends Module {
         }
     }
 
-    /** The block touches the space around you: your surround, the blocks over your head, or the floor. */
     private boolean nearMe(BlockPos pos) {
         return mc.player != null && mc.player.getBoundingBox().expand(1.0, 1.0, 1.0).intersects(new Box(pos));
     }
 
     public int active() { return breaks.size(); }
 
-    /** 0..1 estimate of the break, smoothed between stage packets. */
     private static double progress(Break b, long now) {
         double partial = b.stageMs > 0 ? Math.min(1.0, (now - b.stageStart) / (double) b.stageMs) : 0;
         return MathHelper.clamp((b.stage + partial) / 10.0, 0, 1);

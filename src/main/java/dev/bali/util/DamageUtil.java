@@ -22,18 +22,12 @@ import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.Difficulty;
 import net.minecraft.world.RaycastContext;
 
-/**
- * Explosion damage prediction that mirrors the server (ExplosionImpl + LivingEntity armor/protection).
- * Supports evaluating the target at a different bounding box (prediction) and ignoring one block
- * (e.g. the block we are mining).
- */
 public final class DamageUtil {
     private DamageUtil() {}
 
     private static final MinecraftClient mc = MinecraftClient.getInstance();
     public static final float CRYSTAL_POWER = 6f;
 
-    /** Damage an end crystal at {@code crystalPos} (the entity position) would deal to {@code target}. */
     public static float crystalDamage(LivingEntity target, Vec3d crystalPos) {
         return explosionDamage(target, target.getBoundingBox(), crystalPos, CRYSTAL_POWER, null);
     }
@@ -61,7 +55,6 @@ public final class DamageUtil {
         return applyReductions(target, damage, true);
     }
 
-    /** Armor, toughness, resistance and protection enchantments. */
     public static float applyReductions(LivingEntity target, float damage, boolean explosion) {
         if (damage <= 0) return 0;
         float armor = (float) target.getAttributeValue(EntityAttributes.ARMOR);
@@ -83,7 +76,6 @@ public final class DamageUtil {
 
     private static final EquipmentSlot[] ARMOR_SLOTS = {EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET};
 
-    /** Enchantment protection factor: protection = 1/level, blast protection = 2/level vs explosions. */
     public static int protectionPoints(LivingEntity target, boolean explosion) {
         int epf = 0;
         for (EquipmentSlot slot : ARMOR_SLOTS) {
@@ -103,7 +95,6 @@ public final class DamageUtil {
         return 0;
     }
 
-    /** Same sampling as ExplosionImpl.calculateReceivedDamage, against an arbitrary box. */
     public static double exposure(Vec3d source, Box box, Entity entity, BlockPos ignore) {
         double d = 1.0 / ((box.maxX - box.minX) * 2.0 + 1.0);
         double e = 1.0 / ((box.maxY - box.minY) * 2.0 + 1.0);
@@ -128,7 +119,6 @@ public final class DamageUtil {
         if (ignore == null) {
             return mc.world.raycast(new RaycastContext(from, to, RaycastContext.ShapeType.COLLIDER, RaycastContext.FluidHandling.NONE, entity)).getType() == HitResult.Type.MISS;
         }
-        // Walk the ray block by block and ignore one position.
         HitResult r = net.minecraft.world.BlockView.raycast(from, to, null, (ctx, pos) -> {
             if (pos.equals(ignore)) return null;
             var state = mc.world.getBlockState(pos);
@@ -139,7 +129,6 @@ public final class DamageUtil {
         return r == null || r.getType() == HitResult.Type.MISS;
     }
 
-    /** Health plus absorption. */
     public static float health(LivingEntity e) {
         return e.getHealth() + e.getAbsorptionAmount();
     }

@@ -14,7 +14,6 @@ import net.minecraft.util.math.Box;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Highlights 1x1 safe holes: green = all bedrock, yellow = obsidian/mixed. */
 public final class HoleESP extends Module {
     private final NumberSetting range = number("Range", 8, 2, 16, 1, "Horizontal scan radius");
     private final NumberSetting height = number("Height", 0.1, 0, 1, 0.05, "Render height");

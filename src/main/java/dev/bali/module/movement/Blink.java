@@ -27,16 +27,6 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
-/**
- * Holds outgoing packets and sends them all at once later. To the server (and Grim) you froze and
- * then caught up, like a lag spike.
- *
- * All: hold every packet, keeping Grim's transaction order intact. Safest on Grim.
- * Movement: hold only movement; other packets (attacks, chat, pings) still go out live.
- *
- * Disable sends everything. With "Return" on, disabling discards the movement instead and puts you
- * back where you started (the server never saw you leave).
- */
 public final class Blink extends Module {
     public enum Mode { All, Movement }
 
@@ -92,7 +82,7 @@ public final class Blink extends Module {
         removeGhost();
     }
 
-    @EventHandler(priority = -10_000) // last, so other listeners see packets when they are created
+    @EventHandler(priority = -10_000)
     private void onSend(Events.PacketSend e) {
         if (flushing) return;
         if (e.packet instanceof KeepAliveC2SPacket && mode.is(Mode.Movement)) return;

@@ -10,12 +10,6 @@ import dev.bali.util.InvUtil;
 import net.minecraft.network.packet.c2s.play.UpdateSelectedSlotC2SPacket;
 import net.minecraft.util.Hand;
 
-/**
- * Vanilla: client-only, Grim sets you back.
- * Grim: while using an OFFHAND item, flick the selected slot every tick. Grim treats a slot change as
- *   releasing the item, while the vanilla server keeps the offhand use going. Main-hand use stays slow
- *   (a slot change would cancel eating on the server). Test on the server before relying on it.
- */
 public final class NoSlow extends Module {
     public enum Mode { Vanilla, Grim }
 
@@ -30,7 +24,6 @@ public final class NoSlow extends Module {
     @Override
     public String getInfo() { return mode.get().name(); }
 
-    /** Read by ClientPlayerEntityMixin. */
     public boolean active() {
         if (!isEnabled() || !items.on() || mc.player == null || !mc.player.isUsingItem()) return false;
         return mode.is(Mode.Vanilla) || mc.player.getActiveHand() == Hand.OFF_HAND;

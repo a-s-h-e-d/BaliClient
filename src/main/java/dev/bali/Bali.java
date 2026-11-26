@@ -23,7 +23,6 @@ import org.slf4j.LoggerFactory;
 
 public final class Bali implements ClientModInitializer {
     public static final String NAME = "Bali";
-    /** From fabric.mod.json, which gradle fills in from mod_version. */
     public static final String VERSION = net.fabricmc.loader.api.FabricLoader.getInstance().getModContainer("bali")
         .map(c -> c.getMetadata().getVersion().getFriendlyString()).orElse("?");
     public static final Logger LOG = LoggerFactory.getLogger(NAME);
@@ -89,10 +88,9 @@ public final class Bali implements ClientModInitializer {
         ClientLifecycleEvents.CLIENT_STOPPING.register(mc -> CONFIG.save());
 
         if (Boolean.getBoolean("bali.audit")) {
-            // Dev only (gradlew runClient -Paudit)
             boolean[] done = {false};
             ClientTickEvents.END_CLIENT_TICK.register(mc -> {
-                if (done[0] || mc.getOverlay() != null) return; // wait for the startup resource reload
+                if (done[0] || mc.getOverlay() != null) return;
                 done[0] = true;
                 try {
                     org.spongepowered.asm.mixin.MixinEnvironment.getCurrentEnvironment().audit();

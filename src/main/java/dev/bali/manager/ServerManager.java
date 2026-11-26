@@ -7,7 +7,6 @@ import net.minecraft.client.network.PlayerListEntry;
 import net.minecraft.network.packet.s2c.play.PlayerPositionLookS2CPacket;
 import net.minecraft.network.packet.s2c.play.WorldTimeUpdateS2CPacket;
 
-/** Tracks TPS, ping, server lag and setbacks (useful for tuning against Grim). */
 public final class ServerManager {
     private static final MinecraftClient mc = MinecraftClient.getInstance();
 
@@ -65,10 +64,8 @@ public final class ServerManager {
         return e == null ? 0 : e.getLatency();
     }
 
-    /** Milliseconds since the last packet from the server. */
     public long sinceLastPacket() { return System.currentTimeMillis() - lastPacket; }
 
-    /** Milliseconds since the server last teleported (set back) us. */
     public long sinceSetback() { return System.currentTimeMillis() - lastSetback; }
 
     public int setbacks() { return setbacks; }

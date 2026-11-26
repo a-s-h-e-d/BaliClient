@@ -18,18 +18,6 @@ import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-/**
- * Draws StashFinderBot's map: on the HUD (small, always auto-zoomed) and in the ClickGUI (bigger, scroll
- * to zoom, drag to pan, right click to go back to auto, hover a stash to see why it was flagged).
- *
- * The terrain/overlay/path picture is rendered into a 512x512 texture on a background thread when the
- * map or the view changes (at most ~3 times a second while flying); the player, predicted path and
- * stash markers are drawn on top every frame so they stay smooth and clickable.
- *
- * Auto zoom: the view is centered on the spiral's start and sized to fit everything flown so far plus
- * where the bot is heading. When that no longer fits it zooms out by 25% in one step, so the spiral
- * keeps getting smaller as it grows instead of the picture re-rendering every frame.
- */
 public final class StashMapWidget {
     public static final StashMapWidget INSTANCE = new StashMapWidget();
     private static final int RES = 512;
@@ -50,25 +38,19 @@ public final class StashMapWidget {
     private volatile StashMap readyMap;
     private StashMap.View shownView;
     private StashMap shownMap;
-    // what the last render was asked for
     private StashMap.View requestedView;
     private StashMap requestedMap;
     private long requestedVersion = -1;
     private boolean requestedOverlay;
     private long lastRequest;
 
-    // auto view
     private StashMap autoFor;
     private double autoHalf, autoCx, autoCz;
-    // user view (ClickGUI)
     private double userZoom = 1, panX, panZ;
 
     private StashMapWidget() {}
 
-    /** Hover result: the lines for a tooltip, or null. */
     public record Hover(List<String> lines) {}
-
-    // ------------------------------------------------------------------ view
 
     private StashMap.View view(StashMap map, StashFinderBot bot, boolean user) {
         double[] me = bot.playerOnMap(map);
@@ -107,12 +89,10 @@ public final class StashMapWidget {
         return new double[]{Math.min(b[0], x), Math.min(b[1], z), Math.max(b[2], x), Math.max(b[3], z)};
     }
 
-    /** Scroll: zoom in (positive) or out around the middle. */
     public void zoom(double amount) {
         userZoom = Math.max(1 / 512.0, Math.min(4, userZoom * Math.pow(0.8, amount)));
     }
 
-    /** Drag on the map by screen pixels on a map drawn this big. */
     public void pan(double dx, double dy, int size) {
         StashMap.View v = shownView;
         if (v == null) return;
@@ -128,18 +108,14 @@ public final class StashMapWidget {
 
     public boolean isUserView() { return userZoom != 1 || panX != 0 || panZ != 0; }
 
-    /** Tests: the view of the picture on screen (null before the first render). */
     public StashMap.View shownView() { return shownView; }
 
-    /** Tests: where a world position is drawn on a map at x,y of this size. */
     public double[] screenPos(double wx, double wz, int x, int y, int size) {
         StashMap.View v = shownView;
         if (v == null) return null;
         double k = (double) size / RES;
         return new double[]{x + v.toPxX(wx, RES) * k, y + v.toPxZ(wz, RES) * k};
     }
-
-    // ------------------------------------------------------------------ texture
 
     private void request(StashMap map, StashMap.View v, StashMap.Overlay overlay, boolean overlayOn) {
         long now = System.currentTimeMillis();
@@ -185,12 +161,6 @@ public final class StashMapWidget {
         shownMap = readyMap;
     }
 
-    // ------------------------------------------------------------------ drawing
-
-    /**
-     * Draws the map at x,y (size x size, in the current GUI space). mouseX/Y in the same space, or
-     * -1 for none. Returns what is under the mouse.
-     */
     public Hover draw(DrawContext ctx, int x, int y, int size, int mouseX, int mouseY, boolean interactive) {
         StashFinderBot bot = Bali.MODULES.get(StashFinderBot.class);
         TextRenderer tr = mc.textRenderer;
@@ -204,7 +174,6 @@ public final class StashMapWidget {
             if (tr.getWidth(s2) < size) ctx.drawTextWithShadow(tr, s2, x + size / 2 - tr.getWidth(s2) / 2, y + size / 2 + 2, 0xFF7A7A86);
             return null;
         }
-        // the HUD always shows the auto view; the GUI's zoom/pan only applies there
         StashMap.View want = view(map, bot, interactive);
         boolean overlayOn = bot.mapOverlayOn();
         request(map, want, overlayOn ? bot.mapOverlay() : StashMap.Overlay.NONE, overlayOn);
@@ -220,13 +189,11 @@ public final class StashMapWidget {
         ctx.enableScissor(x, y, x + size, y + size);
         Hover hover = null;
         try {
-            // start of the search
             int ox = sx(v, map.originX, x, k), oz = sz(v, map.originZ, y, k);
             ctx.fill(ox - 3, oz, ox + 4, oz + 1, StashMap.ORIGIN);
             ctx.fill(ox, oz - 3, ox + 1, oz + 4, StashMap.ORIGIN);
 
             double[] me = bot.playerOnMap(map);
-            // predicted path: dotted, from the player through the next waypoints
             if (bot.mapPredictOn() && bot.isEnabled() && me != null) {
                 List<double[]> pts = bot.predictedPath();
                 double px = me[0], pz = me[1];
@@ -243,7 +210,6 @@ public final class StashMapWidget {
                 }
             }
 
-            // stashes
             List<StashMap.Mark> marks = map.marks();
             int r = size >= 150 ? 3 : 2;
             StashMap.Mark hovered = null;
@@ -268,7 +234,6 @@ public final class StashMapWidget {
                 ctx.drawStrokedRectangle(mx - r - 3, mz - r - 3, 2 * r + 7, 2 * r + 7, 0xFFFFFF55);
             }
 
-            // player: dot + heading
             if (me != null) {
                 int px = sx(v, me[0], x, k), pz = sz(v, me[1], y, k);
                 double yaw = Math.toRadians(me[2]);
@@ -296,7 +261,6 @@ public final class StashMapWidget {
             ctx.disableScissor();
         }
 
-        // scale bar, bottom left
         if (size >= 90) {
             double step = StashMap.gridStep(v.bpp());
             String label = step >= 1000 ? StashMap.fmt(step / 1000) + " km" : StashMap.fmt(step) + " m";
@@ -318,12 +282,11 @@ public final class StashMapWidget {
 
     private static int sz(StashMap.View v, double wz, int y, double k) { return y + (int) Math.floor(v.toPxZ(wz, RES) * k); }
 
-    /** Dotted line in screen space; returns the dash phase so consecutive legs line up. */
     private static double dotted(DrawContext ctx, StashMap.View v, int x, int y, double k, double ax, double az, double bx, double bz, double phase, int color) {
         double x0 = v.toPxX(ax, RES) * k + x, y0 = v.toPxZ(az, RES) * k + y;
         double x1 = v.toPxX(bx, RES) * k + x, y1 = v.toPxZ(bz, RES) * k + y;
         double len = Math.hypot(x1 - x0, y1 - y0);
-        if (len > 4000) { // clamp absurdly long legs (zoomed far in) to the visible part
+        if (len > 4000) {
             double s = 4000 / len;
             x1 = x0 + (x1 - x0) * s;
             y1 = y0 + (y1 - y0) * s;
@@ -347,7 +310,6 @@ public final class StashMapWidget {
         return l;
     }
 
-    /** A tooltip box in the current GUI space, kept on screen. */
     public static void drawTooltip(DrawContext ctx, List<String> lines, int mouseX, int mouseY, int screenW, int screenH) {
         TextRenderer tr = mc.textRenderer;
         int w = 0;

@@ -36,33 +36,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-/**
- * Chunk trail finder for 2b2t. Three independent detectors:
- *
- * Palette (trail): tells chunks nobody has loaded before from chunks the server read back from
- *   its disk, i.e. somebody was here, at any time. The palette-order idea comes from etianl's
- *   Trouser-Streak (NewerNewChunks, "the origin of the Palette based tracing method for
- *   NewChunks"); this is our own implementation of it. Why it works: a chunk section's block and
- *   biome palettes go out in the order the server holds them. A section generated just now still
- *   has its palettes in generation order: the block palette starts with air (the empty section
- *   generation starts from) and the biome palette with plains (the biome every section starts
- *   as), even where neither is used any more. Saving a chunk rewrites each palette in position
- *   order with unused entries dropped, and that is what a chunk loaded from disk sends. So a
- *   block palette that starts with air while the section's first block is something else, or a
- *   biome entry no position uses, means freshly generated; a palette in position order means
- *   loaded from disk. Read from the raw packet bytes, before the client touches the chunk.
- *
- * Liquid (live): freshly generated chunks get fluid flow updates right after generation; old chunks
- *   already contain settled flowing fluid. Shows chunks being generated now (someone just passed).
- *
- * Version (history): 2b2t went from 1.12 to 1.19 in 2023. Chunks generated since then contain
- *   blocks 1.12 never generated: in the Nether nether gold ore, blackstone, basalt, soul soil, nylium;
- *   in the Overworld copper ore, tuff, calcite, amethyst, dripstone above y=0 (below 0 is new terrain
- *   even in old chunks). Shows every route traveled since the update.
- *
- * Purely reads chunk data the server sends; nothing is sent, so there's no anticheat exposure.
- * Results are saved per server and dimension in .minecraft/bali/chunks/.
- */
 public final class NewChunks extends Module {
     private enum Liquid { NEW, OLD }
     private enum Version { NEW, OLD }
@@ -122,10 +95,6 @@ public final class NewChunks extends Module {
         return n + "/" + v;
     }
 
-    /**
-     * What this module draws for a chunk, as {@link dev.bali.util.StashMap} NC_* (0 = nothing):
-     * new / generated since 1.19 / old, decided exactly like the 3D overlay.
-     */
     public byte mapVerdict(int chunkX, int chunkZ) {
         long k = ChunkPos.toLong(chunkX, chunkZ);
         Palette p = palette.on() ? paletteState.get(k) : null;
@@ -139,7 +108,6 @@ public final class NewChunks extends Module {
         return dev.bali.util.StashMap.NC_NONE;
     }
 
-    /** Overlay colors for the stash map, from this module's color settings (index = NC_*). */
     public dev.bali.util.StashMap.Overlay mapOverlay() {
         int[] c = new int[4];
         c[dev.bali.util.StashMap.NC_NEW] = 0x60000000 | (newColor.argb() & 0xFFFFFF);
@@ -148,7 +116,6 @@ public final class NewChunks extends Module {
         return new dev.bali.util.StashMap.Overlay(c);
     }
 
-    /** Palette verdict of a chunk, or null if not seen/undecided (tests, other modules). */
     public Palette paletteOf(int chunkX, int chunkZ) { return paletteState.get(ChunkPos.toLong(chunkX, chunkZ)); }
 
     @Override
@@ -182,14 +149,11 @@ public final class NewChunks extends Module {
         loadedKey = null;
     }
 
-    /** Dimension changes (portals) swap to that dimension's saved data. */
     @EventHandler
     private void onTick(Events.TickPost e) {
         if (!key().equals(loadedKey)) switchWorld();
-        if (mc.player.age % 1200 == 0) persist(); // autosave every minute
+        if (mc.player.age % 1200 == 0) persist();
     }
-
-    // ------------------------------------------------------------------ liquid detector
 
     @EventHandler
     private void onReceive(Events.PacketReceive e) {
@@ -206,18 +170,13 @@ public final class NewChunks extends Module {
         FluidState f = state.getFluidState();
         if (f.isEmpty() || f.isStill()) return;
         long key = ChunkPos.toLong(pos.getX() >> 4, pos.getZ() >> 4);
-        // a flow update in a chunk we already saw settled flowing fluid in = player-made flow, ignore
         if (liquidState.get(key) == Liquid.OLD) return;
         liquidState.put(key, Liquid.NEW);
     }
 
-    // ------------------------------------------------------------------ palette detector
-
-    /** Packet palettes up to these bits carry a local palette; above that the ids are global. */
     private static final int BLOCK_INDIRECT_MAX = 8, BIOME_INDIRECT_MAX = 3;
     private static final int BLOCKS = 4096, BIOMES = 64;
     private static volatile boolean parseWarned;
-    /** Tests: keep the evidence behind each verdict. */
     public static volatile boolean debugReasons;
     private final Map<Long, String> reasons = new ConcurrentHashMap<>();
 
@@ -226,7 +185,7 @@ public final class NewChunks extends Module {
     private void queuePalette(net.minecraft.network.packet.s2c.play.ChunkDataS2CPacket p) {
         if (mc.world == null) return;
         long key = ChunkPos.toLong(p.getChunkX(), p.getChunkZ());
-        if (paletteState.containsKey(key)) return; // first verdict sticks (a chunk we generated stays new)
+        if (paletteState.containsKey(key)) return;
         int sections = mc.world.countVerticalSections();
         int plains;
         try {
@@ -235,7 +194,6 @@ public final class NewChunks extends Module {
         } catch (Exception ex) {
             plains = -1;
         }
-        // a fresh wrapper over the packet's bytes: safe to read on our thread
         net.minecraft.network.PacketByteBuf buf = p.getChunkData().getSectionsDataBuf();
         int plainsId = plains;
         scanner.execute(() -> {
@@ -253,9 +211,7 @@ public final class NewChunks extends Module {
         });
     }
 
-    /** One paletted container as sent: palette (raw ids; null = single value or global ids) and packed storage. */
     private record Container(int bits, int single, int[] palette, long[] data) {
-        /** Palette index (or raw id for global storage) at storage index i. */
         int at(int i) {
             if (bits == 0) return 0;
             int per = 64 / bits;
@@ -277,14 +233,8 @@ public final class NewChunks extends Module {
         return new Container(bits, single, pal, data);
     }
 
-    /** NEW / OLD vote of one section's container, or 0 for no opinion. */
     private static final int NO_VOTE = 0, VOTE_NEW = 1, VOTE_OLD = 2;
 
-    /**
-     * Blocks: generation starts from an all-air section, so a fresh palette starts with air. On disk
-     * the palette is rebuilt in position order, so it starts with the block at the section's first
-     * position. Air first while that block is not air = fresh; that block first (not air) = from disk.
-     */
     private static int blockVote(Container c) {
         if (c.palette == null || c.palette.length < 2 || c.at(0) >= c.palette.length) return NO_VOTE;
         BlockState first = Block.STATE_IDS.get(c.palette[0]);
@@ -295,12 +245,6 @@ public final class NewChunks extends Module {
         return NO_VOTE;
     }
 
-    /**
-     * Biomes (untouched by anti-xray): every section starts as plains and generation overwrites it, so
-     * a fresh palette can hold entries no position uses; a saved one never does and is in position
-     * order. Unused entry = fresh. Position order = from disk, unless plains sits first (that is
-     * where the starting plains would be, so it proves nothing).
-     */
     private static int biomeVote(Container c, int plainsId) {
         if (c.palette == null || c.palette.length < 2) return NO_VOTE;
         int n = c.palette.length;
@@ -308,20 +252,14 @@ public final class NewChunks extends Module {
         java.util.Arrays.fill(first, -1);
         for (int i = 0; i < BIOMES; i++) {
             int id = c.at(i);
-            if (id >= n) return NO_VOTE; // not what we think it is
+            if (id >= n) return NO_VOTE;
             if (first[id] < 0) first[id] = i;
         }
-        for (int f : first) if (f < 0) return VOTE_NEW; // an entry no position uses
-        for (int i = 1; i < n; i++) if (first[i] < first[i - 1]) return VOTE_NEW; // not position order
+        for (int f : first) if (f < 0) return VOTE_NEW;
+        for (int i = 1; i < n; i++) if (first[i] < first[i - 1]) return VOTE_NEW;
         return c.palette[0] == plainsId ? NO_VOTE : VOTE_OLD;
     }
 
-    /**
-     * Whole chunk: the lowest non-empty section is the best witness (its first position is bedrock
-     * in the Overworld and Nether, so the block rule always has an answer there), and an unused
-     * biome entry is proof of a fresh chunk. Otherwise the majority decides; unclear chunks stay
-     * undecided and are judged again the next time they are sent.
-     */
     private static Palette classify(net.minecraft.network.PacketByteBuf buf, int sections, int plainsId, StringBuilder why) {
         int newVotes = 0, oldVotes = 0, bottomVote = NO_VOTE;
         boolean staleBiome = false, seenBlocks = false;
@@ -361,8 +299,6 @@ public final class NewChunks extends Module {
         return false;
     }
 
-    // ------------------------------------------------------------------ chunk scan (liquid, version)
-
     private void queueScan(WorldChunk chunk) {
         boolean nether = mc.world != null && mc.world.getRegistryKey() == World.NETHER;
         boolean overworld = mc.world != null && mc.world.getRegistryKey() == World.OVERWORLD;
@@ -383,7 +319,7 @@ public final class NewChunks extends Module {
             for (ChunkSection s : sections) {
                 if (s == null || s.isEmpty()) continue;
                 if (s.hasAny(st -> { FluidState f = st.getFluidState(); return !f.isEmpty() && !f.isStill(); })) {
-                    liquidState.put(key, Liquid.OLD); // already-settled flowing fluid
+                    liquidState.put(key, Liquid.OLD);
                     break;
                 }
             }
@@ -395,7 +331,6 @@ public final class NewChunks extends Module {
             for (int i = 0; i < sections.length; i++) {
                 ChunkSection s = sections[i];
                 if (s == null || s.isEmpty()) continue;
-                // overworld: below y=0 is 1.18+ terrain even in upgraded old chunks, so skip it
                 if (overworld && chunk.sectionIndexToCoord(i) < 0) continue;
                 sawTerrain = true;
                 if (s.hasAny(st -> markers.contains(st.getBlock()))) {
@@ -407,8 +342,6 @@ public final class NewChunks extends Module {
             else if (sawTerrain) versionState.put(key, Version.OLD);
         }
     }
-
-    // ------------------------------------------------------------------ render
 
     @EventHandler
     private void onRender(Events.Render3D e) {
@@ -428,7 +361,6 @@ public final class NewChunks extends Module {
             Palette p = palette.on() ? paletteState.get(k) : null;
             Liquid l = liquidState.get(k);
             Version v = versionState.get(k);
-            // the palette verdict is the reliable one; liquid only decides chunks it has no verdict for
             boolean isNew = p == Palette.NEW || p == null && l == Liquid.NEW;
             boolean isOld = p == Palette.OLD || p == null && l == Liquid.OLD || v == Version.OLD;
             ColorSetting col;
@@ -441,8 +373,6 @@ public final class NewChunks extends Module {
             if (outline.on()) Render3D.boxOutline(box, col.withAlpha(Math.min(255, col.a() * 3)), 1f);
         }
     }
-
-    // ------------------------------------------------------------------ persistence
 
     private String key() {
         String server = mc.getCurrentServerEntry() != null ? mc.getCurrentServerEntry().address : "singleplayer";

@@ -35,7 +35,6 @@ public final class KeyNames {
         };
     }
 
-    /** @return GLFW key, MOUSE_OFFSET+button, -1 for none, or Integer.MIN_VALUE if unknown. */
     public static int parse(String s) {
         String k = s.toLowerCase(Locale.ROOT);
         if (k.equals("none") || k.equals("unbind") || k.equals("null")) return -1;

@@ -10,11 +10,6 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-/**
- * Move-fix, velocity half: when a silent rotation is active, this tick's movement is computed with
- * the server yaw (the keys were already remapped to it in MoveFixInputMixin). Grim simulates with
- * the yaw and keys we send, so this keeps us legit.
- */
 @Mixin(Entity.class)
 public abstract class EntityMixin {
     @Shadow public abstract Vec3d getVelocity();

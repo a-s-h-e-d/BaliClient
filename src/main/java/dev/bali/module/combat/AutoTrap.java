@@ -25,14 +25,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
-/**
- * Traps the nearest enemy: obsidian around the 1x1, 2-tall space they stand in (feet and head) plus
- * a roof. Standing across two or four blocks, the trap covers all of them.
- *
- * The roof has nothing under it (their head is there), so it goes against a helper block on top of
- * the head ring. Grim only lets you click a face you can see, so the helper goes on a side whose face
- * toward the roof points at us, and the roof (and helper) need our eyes above the top of the ring.
- */
 public final class AutoTrap extends Module {
     private final NumberSetting targetRange = number("Target Range", 5, 1, 8, 0.5, "Max distance to the target");
     private final BoolSetting feet = bool("Feet", true, "Also fill the ring at their feet (already there if they're in a hole)");
@@ -91,7 +83,6 @@ public final class AutoTrap extends Module {
         return best;
     }
 
-    /** In placing order: feet ring (with supports), head ring, then helper and roof per cell. */
     private List<BlockPos> positions(PlayerEntity t) {
         Set<BlockPos> cells = HoleUtil.footprint(t);
         List<BlockPos> ring = HoleUtil.ring(cells);
@@ -116,10 +107,6 @@ public final class AutoTrap extends Module {
         return out;
     }
 
-    /**
-     * Nothing solid next to the roof to click. A roof cell placed earlier in the list counts: across
-     * two blocks, the first roof gets the helper and the second goes against the first.
-     */
     private boolean needsHelper(BlockPos roof, List<BlockPos> earlierRoofs) {
         for (Direction d : Direction.values()) {
             if (d == Direction.DOWN) continue;
@@ -129,7 +116,6 @@ public final class AutoTrap extends Module {
         return true;
     }
 
-    /** The spot beside the roof, on top of the head ring, whose face toward the roof we can see. */
     private BlockPos helper(BlockPos roof) {
         Vec3d eye = mc.player.getEyePos();
         BlockPos best = null;

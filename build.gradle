@@ -25,7 +25,6 @@ loom {
     }
 }
 
-// In-world automated tests: ./gradlew runClientGameTest  (src/gametest)
 fabricApi {
     configureTests {
         createSourceSet = true
@@ -35,10 +34,8 @@ fabricApi {
         eula = true
     }
 }
-// Blink deliberately holds packets, which the gametest network synchronizer treats as an error.
 loom.runs.matching { it.name.toLowerCase().contains('gametest') }.configureEach {
     vmArg '-Dfabric.client.gametest.disableNetworkSynchronizer=true'
-    // run only some tests: ./gradlew runClientGameTest -Ptests=newchunks,blink
     if (project.hasProperty('tests')) vmArg "-Dbali.tests=${project.property('tests')}"
     if (project.hasProperty('boostruns')) vmArg "-Dbali.boostruns=${project.property('boostruns')}"
     if (project.hasProperty('botruns')) vmArg "-Dbali.botruns=${project.property('botruns')}"
@@ -48,6 +45,9 @@ loom.runs.matching { it.name.toLowerCase().contains('gametest') }.configureEach 
     if (project.hasProperty('macticks')) vmArg "-Dbali.macticks=${project.property('macticks')}"
     if (project.hasProperty('macscen')) vmArg "-Dbali.macscen=${project.property('macscen')}"
     if (project.hasProperty('macitem')) vmArg "-Dbali.macitem=${project.property('macitem')}"
+    if (project.hasProperty('macavoid')) vmArg "-Dbali.macavoid=${project.property('macavoid')}"
+    if (project.hasProperty('avoidruns')) vmArg "-Dbali.avoidruns=${project.property('avoidruns')}"
+    if (project.hasProperty('avoidscen')) vmArg "-Dbali.avoidscen=${project.property('avoidscen')}"
 }
 
 processResources {

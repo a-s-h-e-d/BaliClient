@@ -15,17 +15,14 @@ import net.minecraft.world.BlockRenderView;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 
-/** Chunk meshing hooks for Xray. Runs on chunk builder threads. */
 @Mixin(SectionBuilder.class)
 public abstract class XrayMixins {
-    /** Unlisted blocks produce no geometry. */
     @WrapOperation(method = "build", at = @At(value = "INVOKE", target = "Lnet/minecraft/block/BlockState;getRenderType()Lnet/minecraft/block/BlockRenderType;"))
     private BlockRenderType bali$hideBlocks(BlockState state, Operation<BlockRenderType> original) {
         if (Xray.hides(state.getBlock())) return BlockRenderType.INVISIBLE;
         return original.call(state);
     }
 
-    /** Nothing occludes, so the cave-culling graph never hides sections behind walls. */
     @WrapOperation(method = "build", at = @At(value = "INVOKE", target = "Lnet/minecraft/block/BlockState;isOpaqueFullCube()Z"))
     private boolean bali$noOcclusion(BlockState state, Operation<Boolean> original) {
         if (Xray.ACTIVE != null) return false;
@@ -38,7 +35,6 @@ public abstract class XrayMixins {
         original.call(manager, pos, world, vc, state, fluid);
     }
 
-    /** Chests etc. are drawn by block entity renderers; hide unlisted ones too. */
     @WrapOperation(method = "build", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/render/chunk/SectionBuilder;addBlockEntity(Lnet/minecraft/client/render/chunk/SectionBuilder$RenderData;Lnet/minecraft/block/entity/BlockEntity;)V"))
     private void bali$hideBlockEntities(SectionBuilder builder, SectionBuilder.RenderData data, BlockEntity be, Operation<Void> original) {
         if (Xray.hides(be.getCachedState().getBlock())) return;

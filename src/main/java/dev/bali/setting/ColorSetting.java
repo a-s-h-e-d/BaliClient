@@ -3,7 +3,6 @@ package dev.bali.setting;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonPrimitive;
 
-/** ARGB color. */
 public class ColorSetting extends Setting<Integer> {
     public ColorSetting(String name, String description, int argb) {
         super(name, description, argb);
@@ -15,7 +14,6 @@ public class ColorSetting extends Setting<Integer> {
     public int g() { return (value >> 8) & 0xFF; }
     public int b() { return value & 0xFF; }
 
-    /** Same color with a different alpha (0-255). */
     public int withAlpha(int alpha) { return (value & 0x00FFFFFF) | ((alpha & 0xFF) << 24); }
 
     public void setChannel(int channel, int v) {

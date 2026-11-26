@@ -24,7 +24,6 @@ public abstract class GameRendererMixin {
         if (dev.bali.module.render.Freecam.active() != null) ci.cancel();
     }
 
-    /** projection.mul(bob/hurt-tilt): remember both so tracers and 2D tags can match the bobbing view. */
     @com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation(method = "renderWorld",
         at = @At(value = "INVOKE", target = "Lorg/joml/Matrix4f;mul(Lorg/joml/Matrix4fc;)Lorg/joml/Matrix4f;", ordinal = 0))
     private org.joml.Matrix4f bali$captureBob(org.joml.Matrix4f projection, org.joml.Matrix4fc bob,
